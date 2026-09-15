@@ -11,6 +11,15 @@ export function buildResponsePlan({ session, observation, userText, data }) {
     humanTransferOffered: session.humanTransferOffered,
   };
 
+  if (observation.scope === "out_of_scope") {
+    return {
+      ...common,
+      task: "decline_out_of_scope_and_resume_sop",
+      protectedClaimDetailsAvailable: Boolean(session.verifiedPartyId),
+      resumeTask: phaseTask(session.phase),
+    };
+  }
+
   if (session.phase === PHASES.VERIFY_ID) {
     const remaining = PII_FIELDS.filter((field) => !session.verification.matchingFields.includes(field));
     return {
@@ -24,6 +33,12 @@ export function buildResponsePlan({ session, observation, userText, data }) {
         explanation: "Claim details are protected until at least three distinct PII fields match the policyholder record.",
       },
       rememberedCaseHint: structuredClone(session.caseHint),
+      conversationPolicy: {
+        acknowledgeEmotionFirst: observation.emotion !== "neutral" || observation.refusal,
+        explainWhyVerificationIsRequired: true,
+        persuadeWithoutBypassingGate: true,
+        stopPersuadingAndOfferHuman: session.humanTransferOffered,
+      },
     };
   }
 
@@ -61,4 +76,11 @@ function scopePlan(session, observation) {
     message: "Only answer questions relevant to this insurance customer-service interaction.",
     escalation: session.humanTransferOffered ? "offer_human_representative" : "continue_current_sop_phase",
   };
+}
+
+function phaseTask(phase) {
+  if (phase === PHASES.VERIFY_ID) return "continue_identity_verification";
+  if (phase === PHASES.RESOLVE_INTENT) return "resolve_case_or_ask_targeted_clarification";
+  if (phase === PHASES.PROCESS_CASE) return "answer_from_grounded_case_data";
+  return "offer_or_resolve_email_summary_choice";
 }
