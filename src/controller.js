@@ -16,6 +16,12 @@ export function applyObservation(session, observation, data) {
     if (next.outOfScopeAttempts >= 3) next.humanTransferOffered = true;
   }
 
+  if (next.phase === PHASES.VERIFY_ID && next.callerRole === "representative") {
+    next.humanTransferOffered = true;
+    events.push({ type: "representative_requires_human" });
+    return { session: next, events, view: publicView(next, data) };
+  }
+
   if (next.phase === PHASES.VERIFY_ID) {
     const verification = evaluateVerification(next.identity, data.policyholders);
     next.verification = verification;
@@ -72,6 +78,7 @@ export function publicView(session, data) {
       matchingFields: [...session.verification.matchingFields],
       verified: Boolean(session.verifiedPartyId),
     },
+    callerRole: session.callerRole,
     rememberedCaseHint: structuredClone(session.caseHint),
     caseResolution: structuredClone(session.caseResolution),
     claimAccess: claimAccess ? "unlocked" : "locked",

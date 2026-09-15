@@ -28,12 +28,13 @@ const TURN_OBSERVATION_SCHEMA = {
       },
       required: ["caseId", "caseType", "status", "month", "year"]
     },
-    intent: { type: ["string", "null"] },
+    intent: { type: "string", enum: ["denial_question", "status_inquiry", "document_submission", "next_steps", "general_claim_question", "end_case", "unknown"] },
+    postProcessChoice: { type: "string", enum: ["send", "skip", "unknown"] },
     emotion: { type: "string", enum: ["neutral", "frustrated", "anxious", "angry", "confused"] },
     refusal: { type: "boolean" },
     scope: { type: "string", enum: ["in_scope", "out_of_scope", "mixed"] }
   },
-  required: ["identity", "callerRole", "caseHint", "intent", "emotion", "refusal", "scope"]
+  required: ["identity", "callerRole", "caseHint", "intent", "postProcessChoice", "emotion", "refusal", "scope"]
 };
 
 export function createOpenAIModel({
@@ -69,6 +70,7 @@ export function createOpenAIModel({
           "Do not decide whether identity is verified and do not choose an SOP phase.",
           "Store useful later-phase case hints even when identity is still being verified.",
           "Classify insurance claims/customer-service questions as in scope; unrelated knowledge questions are out of scope.",
+          "Classify a clear desire to finish the support case as intent=end_case. During POST_PROCESS classify explicit email-summary consent as postProcessChoice=send, explicit refusal as skip, otherwise unknown.",
           "Return the structured observation only."
         ].join(" "),
         input: [{
@@ -115,6 +117,8 @@ export function normalizeObservation(raw) {
   if (!raw.identity || typeof raw.identity !== "object" || Array.isArray(raw.identity)) throw new Error("identity observation is invalid");
   if (!raw.caseHint || typeof raw.caseHint !== "object" || Array.isArray(raw.caseHint)) throw new Error("case hint is invalid");
   if (!["policyholder", "representative", "unknown"].includes(raw.callerRole)) throw new Error("callerRole is invalid");
+  if (!["denial_question", "status_inquiry", "document_submission", "next_steps", "general_claim_question", "end_case", "unknown"].includes(raw.intent)) throw new Error("intent is invalid");
+  if (!["send", "skip", "unknown"].includes(raw.postProcessChoice)) throw new Error("postProcessChoice is invalid");
   if (!["neutral", "frustrated", "anxious", "angry", "confused"].includes(raw.emotion)) throw new Error("emotion is invalid");
   if (typeof raw.refusal !== "boolean") throw new Error("refusal is invalid");
   if (!["in_scope", "out_of_scope", "mixed"].includes(raw.scope)) throw new Error("scope is invalid");
@@ -123,7 +127,8 @@ export function normalizeObservation(raw) {
     identity: compactObject(raw.identity),
     callerRole: raw.callerRole,
     caseHint: compactObject(raw.caseHint),
-    intent: raw.intent ?? null,
+    intent: raw.intent,
+    postProcessChoice: raw.postProcessChoice,
     emotion: raw.emotion,
     refusal: raw.refusal,
     scope: raw.scope,

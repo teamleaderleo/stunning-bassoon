@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>stunning-bassoon</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>stunning-bassoon</h1>
+        <p>SOP-guided insurance claims support demo</p>
+      </div>
+      <button id="reset" type="button">Reset</button>
+    </header>
+
+    <section class="layout">
+      <div class="chat-panel">
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <form id="chat-form">
+          <textarea id="message" rows="3" placeholder="Talk to the claims agent…" required></textarea>
+          <button type="submit">Send</button>
+        </form>
+        <details>
+          <summary>Margaret sample turn</summary>
+          <p>I’m the policyholder. My name is Margaret Chen, policy POL-9921. I’m calling about my denied healthcare claim from January. DOB is 1985-03-15, SSN last four is 4472.</p>
+        </details>
+      </div>
+
+      <aside>
+        <h2>SOP state</h2>
+        <div id="phase" class="phase"></div>
+        <dl id="audit"></dl>
+        <h3>Remembered case hint</h3>
+        <pre id="hint"></pre>
+        <h3>Resolved claim</h3>
+        <pre id="claim"></pre>
+        <section id="email-card" class="email-card" hidden>
+          <h3>Email summary preview</h3>
+          <div id="email-meta"></div>
+          <pre id="email-body"></pre>
+        </section>
+      </aside>
+    </section>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
