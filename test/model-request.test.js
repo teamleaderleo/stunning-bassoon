@@ -8,6 +8,7 @@ test("OpenAI observation request includes the bounded dialogue context", async (
   const observation = {
     identity: { name: null, dob: null, phone: null, email: null, idLast4: "4472", policyNumber: null },
     callerRole: "unknown",
+    identityPrincipalChange: false,
     caseHint: { caseId: null, caseType: null, status: null, month: null, year: null },
     caseTargetChange: false,
     intent: "unknown",
@@ -36,10 +37,13 @@ test("OpenAI observation request includes the bounded dialogue context", async (
   });
 
   assert.deepEqual(result.identity, { idLast4: "4472" });
+  assert.equal(result.identityPrincipalChange, false);
   const body = JSON.parse(captured.options.body);
   assert.match(captured.url, /\/responses$/);
   assert.equal(body.store, false);
   assert.equal(body.model, "test-model");
+  assert.match(body.instructions, /identityPrincipalChange/);
+  assert.match(body.instructions, /wrong identity/i);
   const prompt = body.input[0].content[0].text;
   assert.match(prompt, /Bounded dialogue context/);
   assert.match(prompt, /VERIFY_ID/);
@@ -52,6 +56,7 @@ test("OpenAI observation request includes the bounded dialogue context", async (
 const valid = () => ({
   identity: { name: null, dob: null, phone: null, email: null, idLast4: null, policyNumber: null },
   callerRole: "unknown",
+  identityPrincipalChange: false,
   caseHint: { caseId: null, caseType: null, status: null, month: null, year: null },
   caseTargetChange: false,
   intent: "unknown",
@@ -98,6 +103,7 @@ for (const [name, mutate] of [
   ["nested authority", v => { v.identity.verified = true; }],
   ["wrong identity type", v => { v.identity.name = 42; }],
   ["missing nullable field", v => { delete v.identity.dob; }],
+  ["invalid principal change", v => { v.identityPrincipalChange = "yes"; }],
   ["invalid case enum", v => { v.caseHint.status = "approved"; }],
   ["fractional month", v => { v.caseHint.month = 1.5; }],
   ["month bounds", v => { v.caseHint.month = 13; }],
