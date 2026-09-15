@@ -75,7 +75,7 @@ test("bare no declines a pending human transfer without calling the model", asyn
 
   assert.equal(result.session.humanTransfer.state, "declined");
   assert.deepEqual(result.events, [{ type: "human_transfer_declined" }]);
-  assert.match(result.text, /won't request a human representative/i);
+  assert.match(result.text, /request a human representative right now/i);
 });
 
 test("yes outside a pending human-transfer choice still goes through normal interpretation", async () => {
