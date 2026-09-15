@@ -1,9 +1,11 @@
 let sessionId = null;
+let busy = false;
 
 const messages = document.querySelector("#messages");
 const form = document.querySelector("#chat-form");
 const input = document.querySelector("#message");
 const reset = document.querySelector("#reset");
+const workflowActions = document.querySelector("#workflow-actions");
 
 async function start() {
   const response = await fetch("/api/session", { method: "POST" });
@@ -18,8 +20,15 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = input.value.trim();
   if (!text) return;
-  addMessage("user", text);
   input.value = "";
+  await submitTurn(text);
+});
+
+reset.addEventListener("click", start);
+
+async function submitTurn(text) {
+  if (busy || !sessionId) return;
+  addMessage("user", text);
   setBusy(true);
   try {
     const response = await fetch("/api/chat", {
@@ -37,9 +46,7 @@ form.addEventListener("submit", async (event) => {
     setBusy(false);
     input.focus();
   }
-});
-
-reset.addEventListener("click", start);
+}
 
 function addMessage(kind, text) {
   const item = document.createElement("div");
@@ -63,11 +70,41 @@ function render(view, emailPreview) {
   document.querySelector("#hint").textContent = JSON.stringify(view.rememberedCaseHint, null, 2);
   document.querySelector("#claim").textContent = view.resolvedClaim ? JSON.stringify(view.resolvedClaim, null, 2) : "Locked / unresolved";
 
+  renderWorkflowActions(view);
+
   const card = document.querySelector("#email-card");
   card.hidden = !emailPreview;
   if (emailPreview) {
     document.querySelector("#email-meta").textContent = `To: ${emailPreview.to} · ${emailPreview.subject}`;
     document.querySelector("#email-body").textContent = emailPreview.body;
+  }
+}
+
+function renderWorkflowActions(view) {
+  const actions = [];
+
+  if (view.humanTransfer?.state === "awaiting_choice") {
+    actions.push(
+      { label: "Request human representative", text: "request human representative" },
+      { label: "Continue here", text: "continue here", secondary: true },
+    );
+  } else if (view.emailSummary?.state === "awaiting_choice") {
+    actions.push(
+      { label: "Send email summary", text: "send email summary" },
+      { label: "Skip email", text: "skip email", secondary: true },
+    );
+  }
+
+  workflowActions.replaceChildren();
+  workflowActions.hidden = actions.length === 0;
+  for (const action of actions) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = action.label;
+    button.disabled = busy;
+    if (action.secondary) button.classList.add("secondary");
+    button.addEventListener("click", () => submitTurn(action.text));
+    workflowActions.append(button);
   }
 }
 
@@ -79,9 +116,11 @@ function humanTransferLabel(view) {
   return view.humanTransferOffered ? "offered" : "not needed";
 }
 
-function setBusy(busy) {
-  input.disabled = busy;
-  form.querySelector("button").disabled = busy;
+function setBusy(value) {
+  busy = value;
+  input.disabled = value;
+  form.querySelector("button").disabled = value;
+  for (const button of workflowActions.querySelectorAll("button")) button.disabled = value;
 }
 
 function escapeHtml(value) {
