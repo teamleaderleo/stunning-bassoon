@@ -61,6 +61,7 @@ export function createDemoServer({ model, data = loadFixtures() } = {}) {
           text: result.text,
           events: result.events,
           view: result.view,
+          lastTurn: buildLastTurnInspector(result),
           emailPreview: buildEmailPreview(record.session, data, record.turns),
         });
       }
@@ -68,9 +69,66 @@ export function createDemoServer({ model, data = loadFixtures() } = {}) {
       json(res, 404, { error: "not found" });
     } catch (error) {
       console.error(error);
-      json(res, 500, { error: "request failed" });
+      const safeError = safeClientError(error);
+      json(res, safeError.status, { error: safeError.message });
     }
   });
+}
+
+export function buildLastTurnInspector({ observation = {}, events = [], plan = {}, view = {} }) {
+  const semantics = {};
+  for (const key of ["callerRole", "intent", "scope", "emotion", "humanTransferChoice", "postProcessChoice"]) {
+    const value = observation[key];
+    if (value !== undefined && value !== null && value !== "unknown") semantics[key] = value;
+  }
+  if (observation.identityPrincipalChange === true) semantics.identityPrincipalChange = true;
+  if (observation.caseTargetChange === true) semantics.caseTargetChange = true;
+  if (observation.refusal === true) semantics.refusal = true;
+
+  return {
+    observation: {
+      identityFields: Object.keys(observation.identity ?? {}),
+      caseHintFields: Object.keys(observation.caseHint ?? {}),
+      semantics,
+    },
+    controller: {
+      events: events.map((event) => event?.type).filter(Boolean),
+      phase: view.phase ?? plan.phase ?? null,
+    },
+    responsePlan: {
+      task: plan.task ?? "unknown",
+    },
+  };
+}
+
+function safeClientError(error) {
+  const message = error instanceof Error ? error.message : "";
+
+  if (message.startsWith("MODEL_API_KEY is required")) {
+    return { status: 503, message: "Model configuration is incomplete. Set MODEL_API_KEY, then restart the server." };
+  }
+  if (message.startsWith("MODEL_ID is required")) {
+    return { status: 503, message: "Model configuration is incomplete. Set MODEL_ID, then restart the server." };
+  }
+  if (message.startsWith("MODEL_REASONING_EFFORT must be one of:")) {
+    return { status: 503, message: `Model configuration is invalid. ${message}` };
+  }
+
+  const status = Number(message.match(/^model request failed \((\d{3})\)$/)?.[1]);
+  if (status === 401 || status === 403) {
+    return { status: 502, message: "The model provider rejected the configured credentials. Check MODEL_API_KEY." };
+  }
+  if (status === 404) {
+    return { status: 502, message: "The model provider endpoint or model was not found. Check MODEL_BASE_URL and MODEL_ID." };
+  }
+  if (status >= 400 && status < 500) {
+    return { status: 502, message: "The model provider rejected the request. Check MODEL_BASE_URL, MODEL_ID, and provider compatibility." };
+  }
+  if (status >= 500) {
+    return { status: 502, message: "The model provider is currently unavailable. Check the provider status and try again." };
+  }
+
+  return { status: 500, message: "The claims agent could not complete the request. Check the server log for details." };
 }
 
 function json(res, status, value) {
@@ -92,6 +150,6 @@ async function readJson(req, maxBytes) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const port = Number(process.env.PORT ?? 3000);
   createDemoServer().listen(port, () => {
-    console.log(`stunning-bassoon listening on http://localhost:${port}`);
+    console.log(`SOP-Guided Claims Agent listening on http://localhost:${port}`);
   });
 }
