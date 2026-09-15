@@ -26,6 +26,11 @@ test("demo server creates a session and serves a guarded chat turn", async (t) =
   const { port } = server.address();
   const base = `http://127.0.0.1:${port}`;
 
+  const markdownResponse = await fetch(`${base}/markdown.js`);
+  assert.equal(markdownResponse.status, 200);
+  assert.match(markdownResponse.headers.get("content-type"), /text\/javascript/);
+  assert.match(await markdownResponse.text(), /renderMarkdown/);
+
   const sessionResponse = await fetch(`${base}/api/session`, { method: "POST" });
   assert.equal(sessionResponse.status, 200);
   const created = await sessionResponse.json();
