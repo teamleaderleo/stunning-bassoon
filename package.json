@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "eval": "node eval/run.js",
+    "eval:live": "node eval/live.js"
   },
   "engines": {
     "node": ">=22"
