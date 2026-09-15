@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>stunning-bassoon</title>
+  <title>SOP-Guided Claims Agent</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <main>
     <header>
       <div>
-        <h1>stunning-bassoon</h1>
-        <p>SOP-guided insurance claims support demo</p>
+        <h1>SOP-Guided Claims Agent</h1>
+        <p>LLM interpretation with deterministic claims workflow control</p>
       </div>
       <button id="reset" type="button">Reset</button>
     </header>
@@ -25,15 +25,33 @@
           <button type="submit">Send</button>
         </form>
         <details>
-          <summary>Margaret sample turn</summary>
-          <p>I’m the policyholder. My name is Margaret Chen, policy POL-9921. I’m calling about my denied healthcare claim from January. DOB is 1985-03-15, SSN last four is 4472.</p>
+          <summary>Paste-ready Margaret demo turn</summary>
+          <p>I’m the policyholder. My name is Margaret Chen, policy POL-9921. I’m calling about my denied healthcare claim from January. DOB is 1985-03-15, SSN last four is 4472. Why was it denied?</p>
         </details>
       </div>
 
       <aside>
-        <h2>SOP state</h2>
+        <h2>SOP / audit</h2>
         <div id="phase" class="phase"></div>
         <dl id="audit"></dl>
+
+        <h3>Last turn</h3>
+        <p class="seam-caption">observation → deterministic decision/events → response-plan task</p>
+        <div class="last-turn">
+          <div>
+            <strong>Observation</strong>
+            <pre id="last-observation">Waiting for a caller turn</pre>
+          </div>
+          <div>
+            <strong>Controller</strong>
+            <pre id="last-controller">Waiting for a caller turn</pre>
+          </div>
+          <div>
+            <strong>Response plan</strong>
+            <pre id="last-plan">Waiting for a caller turn</pre>
+          </div>
+        </div>
+
         <h3>Remembered case hint</h3>
         <pre id="hint"></pre>
         <h3>Resolved claim</h3>
