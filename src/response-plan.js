@@ -9,6 +9,7 @@ export function buildResponsePlan({ session, observation, userText, data, asOfDa
     refusal: observation.refusal,
     scope,
     humanTransferOffered: session.humanTransferOffered,
+    humanTransfer: structuredClone(session.humanTransfer ?? { state: "not_offered" }),
   };
 
   if (observation.scope === "out_of_scope") {
@@ -56,9 +57,16 @@ export function buildResponsePlan({ session, observation, userText, data, asOfDa
   if (session.phase === PHASES.PROCESS_CASE) {
     const grounding = buildCaseGrounding(session, userText, data, { asOfDate });
     if (grounding.temporal.appealDeadline.status === "expired") {
+      const transferState = session.humanTransfer?.state ?? "not_offered";
+      const task = transferState === "declined"
+        ? "explain_expired_appeal_after_human_declined"
+        : transferState === "requested"
+          ? "explain_expired_appeal_after_human_requested"
+          : "explain_expired_appeal_and_offer_human";
+
       return {
         ...common,
-        task: "explain_expired_appeal_and_offer_human",
+        task,
         protectedClaimDetailsAvailable: true,
         grounding,
         conversationPolicy: {
@@ -66,7 +74,11 @@ export function buildResponsePlan({ session, observation, userText, data, asOfDa
           ordinarySubmissionPathIsCurrent: false,
           doNotPromiseReReviewOrNormalProcessingTime: true,
           stateLateAppealRuleIsUnavailable: true,
-          offerHumanRepresentative: true,
+          offerHumanRepresentative: transferState === "awaiting_choice" || transferState === "not_offered",
+          doNotRepeatDeclinedTransferOffer: transferState === "declined",
+          humanRepresentativeRemainsAvailableIfCallerReconsiders: transferState === "declined",
+          handoffRequestRecorded: transferState === "requested",
+          doNotClaimLiveTransfer: transferState === "requested",
         },
       };
     }
