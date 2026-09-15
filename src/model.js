@@ -20,6 +20,7 @@ const TURN_OBSERVATION_SCHEMA = {
       required: ["name", "dob", "phone", "email", "idLast4", "policyNumber"]
     },
     callerRole: { type: "string", enum: ["policyholder", "representative", "unknown"] },
+    identityPrincipalChange: { type: "boolean" },
     caseHint: {
       type: "object",
       additionalProperties: false,
@@ -40,7 +41,7 @@ const TURN_OBSERVATION_SCHEMA = {
     refusal: { type: "boolean" },
     scope: { type: "string", enum: ["in_scope", "out_of_scope", "mixed"] }
   },
-  required: ["identity", "callerRole", "caseHint", "caseTargetChange", "intent", "humanTransferChoice", "postProcessChoice", "emotion", "refusal", "scope"]
+  required: ["identity", "callerRole", "identityPrincipalChange", "caseHint", "caseTargetChange", "intent", "humanTransferChoice", "postProcessChoice", "emotion", "refusal", "scope"]
 };
 
 export function createModel({
@@ -87,6 +88,7 @@ export function createModel({
           "Use the current phase, active closed choice, and previous assistant message to interpret terse replies such as a four-digit ID answer, 'yes', 'no', or a short clarification response.",
           "Do not decide whether identity is verified and do not choose an SOP phase.",
           "Store useful later-phase case hints even when identity is still being verified.",
+          "Set identityPrincipalChange=true only when the caller explicitly replaces the person whose identity is being asserted, such as 'I gave you the wrong identity, I'm Ava Lopez' or 'Those were Margaret's details; I'm Ava'. Ordinary corrections to a field for the same person, such as correcting a DOB, email, or phone number, must keep identityPrincipalChange=false.",
           "caseHint must describe the claim the caller wants the assistant to work on. Set caseTargetChange=true only when the caller explicitly replaces or corrects the current target, such as 'actually, I meant my auto claim'. A comparison or secondary mention such as asking whether another claim affects the current claim does not change the target; keep caseTargetChange=false and keep caseHint anchored to the current target or empty.",
           "Set humanTransferChoice=accept when the caller explicitly asks to speak with a human or representative, accepts the active human-transfer offer, or explicitly reconsiders a previous decline. Set it to decline only when the caller explicitly declines an active human-transfer offer; otherwise use unknown.",
           "Classify insurance claims/customer-service questions as in scope; unrelated knowledge questions are out of scope.",
@@ -143,6 +145,7 @@ export function normalizeObservation(raw) {
   return {
     identity: compactObject(raw.identity),
     callerRole: raw.callerRole,
+    identityPrincipalChange: raw.identityPrincipalChange,
     caseHint: compactObject(raw.caseHint),
     caseTargetChange: raw.caseTargetChange,
     intent: raw.intent,
