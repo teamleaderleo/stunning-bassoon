@@ -9,7 +9,9 @@ test("OpenAI observation request includes the bounded dialogue context", async (
     identity: { name: null, dob: null, phone: null, email: null, idLast4: "4472", policyNumber: null },
     callerRole: "unknown",
     caseHint: { caseId: null, caseType: null, status: null, month: null, year: null },
+    caseTargetChange: false,
     intent: "unknown",
+    humanTransferChoice: "unknown",
     postProcessChoice: "unknown",
     emotion: "neutral",
     refusal: false,
@@ -51,7 +53,13 @@ const valid = () => ({
   identity: { name: null, dob: null, phone: null, email: null, idLast4: null, policyNumber: null },
   callerRole: "unknown",
   caseHint: { caseId: null, caseType: null, status: null, month: null, year: null },
-  intent: "unknown", postProcessChoice: "unknown", emotion: "neutral", refusal: false, scope: "in_scope",
+  caseTargetChange: false,
+  intent: "unknown",
+  humanTransferChoice: "unknown",
+  postProcessChoice: "unknown",
+  emotion: "neutral",
+  refusal: false,
+  scope: "in_scope",
 });
 
 function mockModel(payload, options = {}) {
@@ -94,7 +102,9 @@ for (const [name, mutate] of [
   ["fractional month", v => { v.caseHint.month = 1.5; }],
   ["month bounds", v => { v.caseHint.month = 13; }],
   ["year bounds", v => { v.caseHint.year = 1999; }],
+  ["invalid case target change", v => { v.caseTargetChange = "yes"; }],
   ["invalid intent", v => { v.intent = "verify"; }],
+  ["invalid human transfer choice", v => { v.humanTransferChoice = true; }],
   ["invalid consent", v => { v.postProcessChoice = true; }],
 ]) {
   test(`local schema rejects ${name}`, async () => {
