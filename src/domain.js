@@ -19,6 +19,9 @@ export function newSession() {
     lastScope: "in_scope",
     outOfScopeAttempts: 0,
     humanTransferOffered: false,
+    humanTransfer: {
+      state: "not_offered",
+    },
     verifiedPartyId: null,
     verification: {
       candidatePartyId: null,
