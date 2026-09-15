@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 const TURN_OBSERVATION_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -37,27 +39,31 @@ const TURN_OBSERVATION_SCHEMA = {
   required: ["identity", "callerRole", "caseHint", "intent", "postProcessChoice", "emotion", "refusal", "scope"]
 };
 
-export function createOpenAIModel({
-  apiKey = process.env.OPENAI_API_KEY,
-  model = process.env.OPENAI_MODEL,
-  baseUrl = process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+export function createModel({
+  apiKey = process.env.MODEL_API_KEY ?? process.env.OPENAI_API_KEY,
+  model = process.env.MODEL_ID ?? process.env.OPENAI_MODEL,
+  baseUrl = process.env.MODEL_BASE_URL ?? process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+  sessionId = randomUUID(),
   fetchImpl = fetch,
 } = {}) {
-  if (!apiKey) throw new Error("OPENAI_API_KEY is required");
-  if (!model) throw new Error("OPENAI_MODEL is required");
+  if (!apiKey) throw new Error("MODEL_API_KEY is required (OPENAI_API_KEY is also supported)");
+  if (!model) throw new Error("MODEL_ID is required (OPENAI_MODEL is also supported)");
 
   async function response(body) {
     const res = await fetchImpl(`${baseUrl.replace(/\/$/, "")}/responses`, {
       method: "POST",
+      signal: AbortSignal.timeout(60_000),
       headers: {
         authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
+        "user-agent": "stunning-bassoon/0.1.0",
+        ...(new URL(baseUrl).hostname === "opencode.ai" ? { "x-opencode-session": sessionId } : {}),
       },
       body: JSON.stringify({ model, store: false, ...body }),
     });
     if (!res.ok) {
-      const bodyText = await res.text();
-      throw new Error(`model request failed (${res.status}): ${bodyText.slice(0, 500)}`);
+      // Do not echo provider bodies: they can contain credentials or caller data.
+      throw new Error(`model request failed (${res.status})`);
     }
     return res.json();
   }
@@ -118,15 +124,7 @@ export function createOpenAIModel({
 }
 
 export function normalizeObservation(raw) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("observation must be an object");
-  if (!raw.identity || typeof raw.identity !== "object" || Array.isArray(raw.identity)) throw new Error("identity observation is invalid");
-  if (!raw.caseHint || typeof raw.caseHint !== "object" || Array.isArray(raw.caseHint)) throw new Error("case hint is invalid");
-  if (!["policyholder", "representative", "unknown"].includes(raw.callerRole)) throw new Error("callerRole is invalid");
-  if (!["denial_question", "status_inquiry", "document_submission", "next_steps", "general_claim_question", "end_case", "unknown"].includes(raw.intent)) throw new Error("intent is invalid");
-  if (!["send", "skip", "unknown"].includes(raw.postProcessChoice)) throw new Error("postProcessChoice is invalid");
-  if (!["neutral", "frustrated", "anxious", "angry", "confused"].includes(raw.emotion)) throw new Error("emotion is invalid");
-  if (typeof raw.refusal !== "boolean") throw new Error("refusal is invalid");
-  if (!["in_scope", "out_of_scope", "mixed"].includes(raw.scope)) throw new Error("scope is invalid");
+  validateSchema(raw, TURN_OBSERVATION_SCHEMA, "observation");
 
   return {
     identity: compactObject(raw.identity),
@@ -140,12 +138,43 @@ export function normalizeObservation(raw) {
   };
 }
 
+// Validate the full schema locally, including nullable fields and unknown keys.
+// This deliberately implements only the keywords used by TURN_OBSERVATION_SCHEMA.
+function validateSchema(value, schema, path) {
+  const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+  const types = [].concat(schema.type);
+  if (!types.includes(type) && !(types.includes("integer") && Number.isInteger(value))) {
+    throw new Error(`${path} has an invalid type`);
+  }
+  if (schema.enum && !schema.enum.includes(value)) throw new Error(`${path} is invalid`);
+  if (typeof value === "number" && (value < schema.minimum || value > schema.maximum)) {
+    throw new Error(`${path} is out of range`);
+  }
+  if (type === "object") {
+    for (const key of schema.required) {
+      if (!Object.hasOwn(value, key)) throw new Error(`${path}.${key} is required`);
+    }
+    for (const key of Object.keys(value)) {
+      if (!Object.hasOwn(schema.properties, key)) throw new Error(`${path} contains an unknown field`);
+      validateSchema(value[key], schema.properties[key], `${path}.${key}`);
+    }
+  }
+}
+
+// Preserve the original public factory for callers using the old name.
+export const createOpenAIModel = createModel;
+
 function compactObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== null && item !== undefined && item !== ""));
 }
 
 function extractOutputText(response) {
-  if (typeof response.output_text === "string") return response.output_text;
+  if (response.status && response.status !== "completed") throw new Error("model response was not completed");
+  if (response.error) throw new Error("model response failed");
+  if ((response.output ?? []).some(item => item.content?.some(content => content.type === "refusal"))) {
+    throw new Error("model refused the request");
+  }
+  if (typeof response.output_text === "string" && response.output_text.trim()) return response.output_text;
   const chunks = [];
   for (const item of response.output ?? []) {
     if (item.type !== "message") continue;
@@ -153,6 +182,6 @@ function extractOutputText(response) {
       if (content.type === "output_text" && typeof content.text === "string") chunks.push(content.text);
     }
   }
-  if (!chunks.length) throw new Error("model response contained no output text");
+  if (!chunks.join("").trim()) throw new Error("model response contained no output text");
   return chunks.join("");
 }

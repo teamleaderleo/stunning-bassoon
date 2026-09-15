@@ -6,7 +6,7 @@ import { runAgentTurn } from "./agent.js";
 import { newSession, publicView } from "./controller.js";
 import { loadFixtures } from "./data.js";
 import { buildEmailPreview } from "./email.js";
-import { createOpenAIModel } from "./model.js";
+import { createModel } from "./model.js";
 
 const STATIC = new Map([
   ["/", ["../web/index.html", "text/html; charset=utf-8"]],
@@ -16,7 +16,6 @@ const STATIC = new Map([
 
 export function createDemoServer({ model, data = loadFixtures() } = {}) {
   const sessions = new Map();
-  const activeModel = model ?? createOpenAIModel();
 
   return createHttpServer(async (req, res) => {
     try {
@@ -30,7 +29,7 @@ export function createDemoServer({ model, data = loadFixtures() } = {}) {
       if (req.method === "POST" && req.url === "/api/session") {
         const id = randomUUID();
         const session = newSession();
-        sessions.set(id, { session, turns: [] });
+        sessions.set(id, { session, turns: [], model: model ?? createModel({ sessionId: id }) });
         return json(res, 200, { sessionId: id, view: publicView(session, data) });
       }
 
@@ -46,7 +45,7 @@ export function createDemoServer({ model, data = loadFixtures() } = {}) {
           session: record.session,
           userText: input.text.trim(),
           data,
-          model: activeModel,
+          model: record.model,
           previousAssistantText: record.turns.at(-1)?.assistant ?? null,
         });
         record.session = result.session;

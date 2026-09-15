@@ -37,8 +37,9 @@ Core rules:
 Node 22+ is enough; there are no runtime package dependencies.
 
 ```bash
-export OPENAI_API_KEY=...
-export OPENAI_MODEL=...
+export MODEL_API_KEY=... # Your OpenCode Go API key
+export MODEL_BASE_URL=https://opencode.ai/zen/go/v1
+export MODEL_ID=muse-spark-1.3-contributor
 npm start
 ```
 
@@ -46,15 +47,26 @@ Open `http://localhost:3000`.
 
 The page contains the text conversation plus a live SOP panel showing phase, verified identity fields, remembered case hints, claim access, case resolution, irrelevant-question retries, human escalation state, and post-process email consent. Email delivery is simulated as a grounded preview after explicit send consent.
 
-`OPENAI_BASE_URL` is optional. The model adapter uses the Responses API with a strict JSON-schema observation pass, then a separate phrasing pass over a controller-produced response plan. The observation pass receives the previous assistant turn so short replies such as `4472`, `yes`, or `the denied one` can be interpreted in context. `VERIFY_ID` context contains no authoritative claim records.
+Configuration uses `MODEL_API_KEY`, `MODEL_BASE_URL`, and `MODEL_ID`. The old `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and `OPENAI_MODEL` remain fallbacks; `MODEL_*` takes precedence. Without a base URL, the adapter retains the original `https://api.openai.com/v1` default. `.env` files are not loaded automatically: export variables or use `node --env-file=.env src/server.js`. Never commit credentials or local env files.
+
+The model adapter uses the Responses API with a strict JSON-schema observation pass, then a separate phrasing pass over a controller-produced response plan. The observation pass receives the previous assistant turn so short replies such as `4472`, `yes`, or `the denied one` can be interpreted in context. `VERIFY_ID` context contains no authoritative claim records.
+
+### OpenCode Go model contract
+
+The [OpenCode Go endpoint documentation](https://opencode.ai/docs/go/#endpoints) lists `muse-spark-1.3-contributor` and the alternative `gpt-5.6-luna` at `POST https://opencode.ai/zen/go/v1/responses`. Use the bare model ID, without the OpenCode CLI's `opencode-go/` prefix. Requests use `Authorization: Bearer <MODEL_API_KEY>`, JSON bodies, `instructions`, and `input` messages containing `input_text`. Observation requests add `text.format` with `type: json_schema`, `strict: true`, and the observation schema; phrasing requests omit that format. Both send `store: false`. The adapter identifies itself and supplies a stable `x-opencode-session` per demo conversation.
+
+Every observation is also validated locally against all fields, types, enums, required keys, ranges and unknown-key restrictions before it can enter session state. Invalid JSON, refusals, incomplete responses and HTTP failures fail closed. Requests time out after 60 seconds; there are no automatic paid retries or silent model switches. To select Luna explicitly, change only `MODEL_ID=gpt-5.6-luna`.
+
+[Go usage and privacy documentation](https://opencode.ai/docs/go/) describes Go as intended for coding-agent traffic. This insurance take-home harness is a different workload; successful probes do not establish production-use eligibility. Muse Contributor permits training on prompts/completions and is not zero-retention; `store: false` does not opt out of those terms. Keep this demo to synthetic fixtures. Luna is listed as not used for training, with up to 30-day abuse-monitoring retention. Muse availability also depends on region.
 
 ### Docker
 
 ```bash
 docker build -t stunning-bassoon .
 docker run --rm -p 3000:3000 \
-  -e OPENAI_API_KEY \
-  -e OPENAI_MODEL \
+  -e MODEL_API_KEY \
+  -e MODEL_BASE_URL \
+  -e MODEL_ID \
   stunning-bassoon
 ```
 
@@ -72,10 +84,10 @@ npm run eval
 An optional live-model probe uses the same real adapter:
 
 ```bash
-OPENAI_API_KEY=... OPENAI_MODEL=... npm run eval:live
+npm run eval:live # Uses the MODEL_* variables exported above
 ```
 
-It probes the model-dependent interpretation cases separately so normal CI never makes paid external calls.
+It probes the model-dependent interpretation cases separately so normal CI never makes paid external calls. Muse Spark 1.3 Contributor passed all five live scenarios on 2026-09-14 with this strict schema request format and plain-text phrasing; no JSON fallback was needed. This is a bounded compatibility probe, not a guarantee of extraction accuracy on arbitrary caller turns.
 
 ## Deliberate boundary
 

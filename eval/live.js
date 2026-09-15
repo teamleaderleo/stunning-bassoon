@@ -1,10 +1,9 @@
 import { runAgentTurn } from "../src/agent.js";
 import { newSession } from "../src/controller.js";
 import { loadFixtures } from "../src/data.js";
-import { createOpenAIModel } from "../src/model.js";
+import { createModel } from "../src/model.js";
 
 const data = loadFixtures();
-const model = createOpenAIModel();
 
 const scenarios = [
   {
@@ -40,6 +39,7 @@ const scenarios = [
 
 let failures = 0;
 for (const scenario of scenarios) {
+  const model = createModel();
   let session = newSession();
   const results = [];
   try {
