@@ -53,8 +53,11 @@ export const scenarios = [
   },
   {
     id: "national-id-last4",
-    description: "national_id_last4 occupies the same bounded PII slot as SSN last four.",
-    turns: [{ text: "Ma Tian, 1964-09-10, ID last four 6688.", observation: observation({ identity: { name: "Ma Tian", dob: "1964-09-10", idLast4: "6688" } }) }],
+    description: "National-ID last four may be collected but does not count as the assignment's SSN-last-four field; an approved phone match completes verification.",
+    turns: [
+      { text: "Ma Tian, 1964-09-10, national ID last four 6688.", observation: observation({ identity: { name: "Ma Tian", dob: "1964-09-10", idLast4: "6688" } }) },
+      { text: "My phone is 650-208-8799.", observation: observation({ identity: { phone: "650-208-8799" } }) },
+    ],
     expect: { phase: "RESOLVE_INTENT", verifiedPartyId: "P12" },
   },
   {
