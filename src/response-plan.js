@@ -49,6 +49,7 @@ export function buildResponsePlan({ session, observation, userText, data }) {
       protectedClaimDetailsAvailable: true,
       rememberedCaseHint: structuredClone(session.caseHint),
       caseResolution: structuredClone(session.caseResolution),
+      caseCandidates: candidateSummaries(session, data),
     };
   }
 
@@ -76,6 +77,20 @@ function scopePlan(session, observation) {
     message: "Only answer questions relevant to this insurance customer-service interaction.",
     escalation: session.humanTransferOffered ? "offer_human_representative" : "continue_current_sop_phase",
   };
+}
+
+function candidateSummaries(session, data) {
+  if (!session.verifiedPartyId) return [];
+  const ids = new Set(session.caseResolution.candidateCaseIds);
+  return data.claims
+    .filter((claim) => claim.party_id === session.verifiedPartyId && ids.has(claim.case_id))
+    .map((claim) => ({
+      caseId: claim.case_id,
+      caseType: claim.case_type,
+      createdAt: claim.created_at,
+      status: claim.status,
+      summary: claim.summary,
+    }));
 }
 
 function phaseTask(phase) {

@@ -5,10 +5,18 @@ import {
   publicView,
 } from "./controller.js";
 import { PHASES } from "./domain.js";
+import { buildObservationContext } from "./observation-context.js";
 import { buildResponsePlan } from "./response-plan.js";
 
-export async function runAgentTurn({ session, userText, data, model }) {
-  const observation = await model.observe(userText);
+export async function runAgentTurn({
+  session,
+  userText,
+  data,
+  model,
+  previousAssistantText = null,
+}) {
+  const observationContext = buildObservationContext(session, previousAssistantText);
+  const observation = await model.observe(userText, observationContext);
   const advanced = applyObservation(session, observation, data);
   let current = advanced.session;
   const events = [...advanced.events];
@@ -31,6 +39,7 @@ export async function runAgentTurn({ session, userText, data, model }) {
     session: current,
     events,
     observation,
+    observationContext,
     plan,
     text,
     view: publicView(current, data),

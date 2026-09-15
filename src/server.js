@@ -47,6 +47,7 @@ export function createDemoServer({ model, data = loadFixtures() } = {}) {
           userText: input.text.trim(),
           data,
           model: activeModel,
+          previousAssistantText: record.turns.at(-1)?.assistant ?? null,
         });
         record.session = result.session;
         record.turns.push({

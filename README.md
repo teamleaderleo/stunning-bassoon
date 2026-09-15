@@ -8,7 +8,7 @@ The implementation keeps workflow authority in ordinary code and uses a model fo
 
 ```text
 caller turn
--> structured language observation
+-> bounded dialogue context + structured language observation
 -> merge durable session facts
 -> deterministic SOP controller
 -> bounded response plan / grounding
@@ -26,7 +26,9 @@ Core rules:
 - useful facts are remembered whenever the caller provides them, even when they belong to a later phase;
 - claim details stay unavailable until identity is verified with at least three distinct matching PII fields;
 - the model may interpret language and phrase responses, but cannot directly advance the SOP phase;
+- turn interpretation gets only bounded dialogue context: current phase, previous assistant message, remembered semantic state, and consent state;
 - case answers are grounded in the verified caller's selected claim and relevant guidance;
+- ambiguous verified cases expose bounded candidate summaries so the agent can ask a targeted clarification;
 - post-processing asks the caller to explicitly send or skip an email summary;
 - out-of-scope questions are redirected without throwing away useful in-scope facts from the same turn.
 
@@ -44,7 +46,7 @@ Open `http://localhost:3000`.
 
 The page contains the text conversation plus a live SOP panel showing phase, verified identity fields, remembered case hints, claim access, case resolution, irrelevant-question retries, human escalation state, and post-process email consent. Email delivery is simulated as a grounded preview after explicit send consent.
 
-`OPENAI_BASE_URL` is optional. The model adapter uses the Responses API with a strict JSON-schema observation pass, then a separate phrasing pass over a controller-produced response plan. The model never receives authoritative claim data during `VERIFY_ID`.
+`OPENAI_BASE_URL` is optional. The model adapter uses the Responses API with a strict JSON-schema observation pass, then a separate phrasing pass over a controller-produced response plan. The observation pass receives the previous assistant turn so short replies such as `4472`, `yes`, or `the denied one` can be interpreted in context. `VERIFY_ID` context contains no authoritative claim records.
 
 ### Docker
 
@@ -63,7 +65,7 @@ npm test
 npm run eval
 ```
 
-`npm test` covers the controller, model boundary, selected-claim grounding, representative guard, POST_PROCESS consent, and HTTP demo path without a live key.
+`npm test` covers the controller, model boundary, bounded dialogue context, selected-claim grounding, representative guard, POST_PROCESS consent, and HTTP demo path without a live key.
 
 `npm run eval` prints an inspectable transition timeline for deterministic assessment scenarios: the supplied Margaret case, cross-turn memory, mismatched PII, aliases, national-ID last four, angry refusal, mixed/out-of-scope turns, repeated irrelevant questions, ambiguous case selection, pre-verification prompt injection, representative handling, and post-process skip.
 
@@ -87,5 +89,6 @@ The supplied `consent_scenarios.json` is retained as fixture data. The requested
 - #2 bounded model interpretation and grounded responses
 - #3 chat demo and inspectable SOP state
 - #4 adversarial scenario evals
+- #9 bounded dialogue context for terse follow-ups
 
 The repository is intentionally small. Prefer explicit behavior and executable scenarios over framework layers.
