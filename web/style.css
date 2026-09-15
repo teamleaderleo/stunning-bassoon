@@ -12,7 +12,17 @@ button:disabled { cursor: default; opacity: .55; }
 .chat-panel { overflow: hidden; }
 .messages { height: 560px; overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
 .message { max-width: 82%; padding: 11px 13px; border-radius: 12px; white-space: pre-wrap; line-height: 1.4; }
-.message.agent { background: #f0f0ef; align-self: flex-start; }
+.message.agent { background: #f0f0ef; align-self: flex-start; white-space: normal; }
+.message.agent p { margin: 0 0 12px; }
+.message.agent p:last-child { margin-bottom: 0; }
+.message.agent ul, .message.agent ol { margin: 8px 0 12px; padding-left: 22px; }
+.message.agent ul:last-child, .message.agent ol:last-child { margin-bottom: 0; }
+.message.agent li + li { margin-top: 4px; }
+.message.agent h1, .message.agent h2, .message.agent h3 { margin: 0 0 8px; line-height: 1.25; }
+.message.agent h1 { font-size: 1.2rem; }
+.message.agent h2 { font-size: 1.1rem; }
+.message.agent h3 { font-size: 1rem; }
+.message.agent code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; background: rgba(0,0,0,.06); padding: 1px 4px; border-radius: 4px; }
 .message.user { background: #1f2937; color: white; align-self: flex-end; }
 .message.system { background: #fff4e5; align-self: center; }
 .workflow-actions { border-top: 1px solid #e5e5e5; padding: 12px 14px 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
