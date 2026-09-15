@@ -70,6 +70,50 @@ test("a terse ID-last-four reply can finish verification using the previous assi
   assert.equal(result.session.phase, "PROCESS_CASE");
 });
 
+test("a terse verification answer is not reinterpreted as case intent after identity verifies", async () => {
+  const session = applyObservation(newSession(), baseObservation({
+    callerRole: "policyholder",
+    identity: { name: "Margaret Chen", dob: "1985-03-15" },
+  }), data).session;
+
+  assert.equal(session.phase, "VERIFY_ID");
+  assert.deepEqual(session.verification.matchingFields.sort(), ["dob", "name"]);
+
+  const model = {
+    async observe(text, context) {
+      assert.equal(text, "4472");
+      assert.equal(context.phase, "VERIFY_ID");
+      assert.match(context.previousAssistantText, /last 4|last four/i);
+      return baseObservation({ identity: { idLast4: "4472" } });
+    },
+    async phrase({ userText, plan }) {
+      assert.equal(userText, "4472");
+      assert.equal(plan.task, "acknowledge_identity_verified_and_request_case_intent");
+      assert.equal(plan.transition.identityVerifiedThisTurn, true);
+      assert.equal(plan.transition.currentTurnPurpose, "identity_verification_answer");
+      assert.equal(plan.conversationPolicy.doNotInterpretCurrentTurnAsCaseIdentifier, true);
+      assert.equal(plan.conversationPolicy.askWhatClaimOrIssueNeedsHelp, true);
+      assert.deepEqual(plan.caseCandidates, []);
+      return "Thanks, you're verified. What claim or issue can I help you with?";
+    },
+  };
+
+  const result = await runAgentTurn({
+    session,
+    userText: "4472",
+    previousAssistantText: "Could you provide your phone, email, or the last 4 digits of your ID?",
+    data,
+    model,
+  });
+
+  assert.equal(result.session.phase, "RESOLVE_INTENT");
+  assert.equal(result.session.verifiedPartyId, "P9");
+  assert.equal(result.session.resolvedCaseId, null);
+  assert.equal(result.session.caseResolution.status, "unresolved");
+  assert.equal(result.events.some((event) => event.type === "identity_verified"), true);
+  assert.match(result.text, /verified/i);
+});
+
 test("a terse yes can resolve POST_PROCESS email consent from bounded context", async () => {
   let session = applyObservation(newSession(), baseObservation({
     callerRole: "policyholder",
