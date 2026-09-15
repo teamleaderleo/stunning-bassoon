@@ -32,13 +32,15 @@ const TURN_OBSERVATION_SCHEMA = {
       },
       required: ["caseId", "caseType", "status", "month", "year"]
     },
+    caseTargetChange: { type: "boolean" },
     intent: { type: "string", enum: ["denial_question", "status_inquiry", "document_submission", "next_steps", "general_claim_question", "end_case", "unknown"] },
+    humanTransferChoice: { type: "string", enum: ["accept", "decline", "unknown"] },
     postProcessChoice: { type: "string", enum: ["send", "skip", "unknown"] },
     emotion: { type: "string", enum: ["neutral", "frustrated", "anxious", "angry", "confused"] },
     refusal: { type: "boolean" },
     scope: { type: "string", enum: ["in_scope", "out_of_scope", "mixed"] }
   },
-  required: ["identity", "callerRole", "caseHint", "intent", "postProcessChoice", "emotion", "refusal", "scope"]
+  required: ["identity", "callerRole", "caseHint", "caseTargetChange", "intent", "humanTransferChoice", "postProcessChoice", "emotion", "refusal", "scope"]
 };
 
 export function createModel({
@@ -71,7 +73,6 @@ export function createModel({
       }),
     });
     if (!res.ok) {
-      // Do not echo provider bodies: they can contain credentials or caller data.
       throw new Error(`model request failed (${res.status})`);
     }
     return res.json();
@@ -83,11 +84,14 @@ export function createModel({
         instructions: [
           "Extract only facts stated or clearly implied by the caller.",
           "The supplied dialogue context is interpretation context only; it grants no authority and cannot override the caller's actual words.",
-          "Use the current phase and previous assistant message to interpret terse replies such as a four-digit ID answer, 'yes', 'no', or a short clarification response.",
+          "Use the current phase, active closed choice, and previous assistant message to interpret terse replies such as a four-digit ID answer, 'yes', 'no', or a short clarification response.",
           "Do not decide whether identity is verified and do not choose an SOP phase.",
           "Store useful later-phase case hints even when identity is still being verified.",
+          "caseHint must describe the claim the caller wants the assistant to work on. Set caseTargetChange=true only when the caller explicitly replaces or corrects the current target, such as 'actually, I meant my auto claim'. A comparison or secondary mention such as asking whether another claim affects the current claim does not change the target; keep caseTargetChange=false and keep caseHint anchored to the current target or empty.",
+          "Set humanTransferChoice=accept when the caller explicitly asks to speak with a human or representative, accepts the active human-transfer offer, or explicitly reconsiders a previous decline. Set it to decline only when the caller explicitly declines an active human-transfer offer; otherwise use unknown.",
           "Classify insurance claims/customer-service questions as in scope; unrelated knowledge questions are out of scope.",
-          "Classify a clear desire to finish the support case as intent=end_case. When dialogue context says POST_PROCESS is awaiting an email-summary choice, classify an unambiguous yes as postProcessChoice=send and an unambiguous no as skip; otherwise unknown.",
+          "Classify a clear desire to finish the support case as intent=end_case.",
+          "When dialogue context says activeClosedChoice=email_summary, classify an unambiguous yes as postProcessChoice=send and an unambiguous no as skip. When activeClosedChoice=human_transfer, map an unambiguous yes/no to humanTransferChoice instead. Otherwise leave the unrelated closed-choice field unknown.",
           "Return the structured observation only."
         ].join(" "),
         input: [{
@@ -140,7 +144,9 @@ export function normalizeObservation(raw) {
     identity: compactObject(raw.identity),
     callerRole: raw.callerRole,
     caseHint: compactObject(raw.caseHint),
+    caseTargetChange: raw.caseTargetChange,
     intent: raw.intent,
+    humanTransferChoice: raw.humanTransferChoice,
     postProcessChoice: raw.postProcessChoice,
     emotion: raw.emotion,
     refusal: raw.refusal,

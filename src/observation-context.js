@@ -8,13 +8,14 @@ export function buildObservationContext(session, previousAssistantText = null) {
     previousAssistantText: boundedText(previousAssistantText),
     callerRole: session.callerRole,
     providedIdentityFields: PII_FIELDS.filter((field) => hasValue(session.identity[field])),
-    matchingIdentityFields: [...session.verification.matchingFields],
     rememberedCaseHint: structuredClone(session.caseHint),
     caseResolutionStatus: session.caseResolution.status,
+    humanTransferState: session.humanTransfer?.state ?? "not_offered",
     emailSummaryState: session.emailSummary.state,
+    activeClosedChoice: activeClosedChoice(session),
   };
 
-  if (session.phase === PHASES.VERIFY_ID) {
+  if (session.phase === PHASES.VERIFY_ID || !session.verifiedPartyId) {
     return {
       ...context,
       protectedClaimDetailsAvailable: false,
@@ -23,9 +24,16 @@ export function buildObservationContext(session, previousAssistantText = null) {
 
   return {
     ...context,
-    protectedClaimDetailsAvailable: Boolean(session.verifiedPartyId),
+    protectedClaimDetailsAvailable: true,
+    matchingIdentityFields: [...session.verification.matchingFields],
     resolvedCaseId: session.resolvedCaseId,
   };
+}
+
+function activeClosedChoice(session) {
+  if (session.phase === PHASES.POST_PROCESS && session.emailSummary?.state === "awaiting_choice") return "email_summary";
+  if (session.humanTransfer?.state === "awaiting_choice") return "human_transfer";
+  return null;
 }
 
 function boundedText(value) {

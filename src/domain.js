@@ -23,6 +23,7 @@ export function newSession() {
       state: "not_offered",
     },
     verifiedPartyId: null,
+    verificationSubjectPartyId: null,
     verification: {
       candidatePartyId: null,
       matchingFields: [],

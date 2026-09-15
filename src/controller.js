@@ -2,40 +2,110 @@ import { PHASES, PII_FIELDS, newSession } from "./domain.js";
 
 const CASE_TYPES = new Set(["healthcare", "dental", "auto"]);
 const CASE_STATUSES = new Set(["denied", "closed", "open"]);
+const ACTIONABLE_CLAIM_INTENTS = new Set([
+  "denial_question",
+  "status_inquiry",
+  "document_submission",
+  "next_steps",
+  "general_claim_question",
+]);
 
 export { newSession };
 
-export function applyObservation(session, observation, data) {
+export function applyObservation(session, observation = {}, data) {
   const next = structuredClone(session);
   const events = [];
+  const verifiedPartyAtStart = next.verifiedPartyId;
+  const piiEvidenceChanged = Boolean(
+    verifiedPartyAtStart
+    && observation.identity
+    && PII_FIELDS.some((field) => Object.hasOwn(observation.identity, field)
+      && hasValue(observation.identity[field])
+      && !identityValuesEqual(field, observation.identity[field], next.identity[field])),
+  );
+  const policyLocatorChanged = Boolean(
+    verifiedPartyAtStart
+    && observation.identity
+    && Object.hasOwn(observation.identity, "policyNumber")
+    && hasValue(observation.identity.policyNumber)
+    && normalizePolicyNumber(observation.identity.policyNumber) !== normalizePolicyNumber(next.identity.policyNumber),
+  );
+  const authorizationEvidenceChanged = piiEvidenceChanged || policyLocatorChanged;
 
-  if (shouldRetargetResolvedCase(next, observation, data)) {
+  if (observation.caseTargetChange === true) {
     const previousCaseId = next.resolvedCaseId;
-    resetResolvedCaseTarget(next);
-    events.push({ type: "case_retargeted", fromCaseId: previousCaseId });
+    const hadTarget = Boolean(previousCaseId || Object.values(next.caseHint).some(hasValue));
+    resetCaseTarget(next);
+    if (hadTarget) events.push({ type: "case_retargeted", fromCaseId: previousCaseId });
   }
 
-  mergeObservation(next, observation);
+  mergeObservation(next, observation, {
+    mergeCaseHint: observation.caseTargetChange === true || !next.resolvedCaseId,
+  });
 
-  if (observation.scope === "out_of_scope" || observation.scope === "mixed") {
+  if (observation.scope === "out_of_scope") {
     next.outOfScopeAttempts += 1;
     if (next.outOfScopeAttempts >= 3) setHumanTransferPending(next);
+  } else if (observation.scope === "in_scope" || observation.scope === "mixed") {
+    next.outOfScopeAttempts = 0;
   }
 
-  if (next.phase === PHASES.VERIFY_ID && next.callerRole === "representative") {
+  if (next.callerRole === "representative") {
+    if (next.emailSummary?.state === "awaiting_choice") next.emailSummary = { state: "not_offered" };
+    if (next.verifiedPartyId) {
+      revokeAuthorization(next);
+      events.push({ type: "authorization_revoked", reason: "representative_disclosure" });
+    }
     setHumanTransferPending(next);
+    applyObservedHumanTransferChoice(next, observation.humanTransferChoice, events);
     events.push({ type: "representative_requires_human" });
     return { session: next, events, view: publicView(next, data) };
   }
 
+  if (verifiedPartyAtStart && next.verifiedPartyId && authorizationEvidenceChanged) {
+    const verifiedParty = data.policyholders.find((party) => party.party_id === verifiedPartyAtStart);
+    const matchingFields = verifiedParty ? matchingPiiFields(next.identity, verifiedParty) : [];
+    const contradiction = verifiedParty
+      ? policyNumberContradictsParty(next.identity.policyNumber, verifiedParty, data.policyholders)
+      : true;
+
+    next.verification = {
+      candidatePartyId: verifiedParty?.party_id ?? null,
+      matchingFields,
+    };
+
+    if (matchingFields.length < 3 || contradiction) {
+      revokeAuthorization(next);
+      events.push({ type: "authorization_revoked", reason: "identity_correction" });
+      return { session: next, events, view: publicView(next, data) };
+    }
+  }
+
   if (next.phase === PHASES.VERIFY_ID) {
-    const verification = evaluateVerification(next.identity, data.policyholders);
+    const verification = next.verificationSubjectPartyId
+      ? evaluateVerificationForParty(next.identity, next.verificationSubjectPartyId, data.policyholders)
+      : evaluateVerification(next.identity, data.policyholders);
     next.verification = verification;
     if (verification.matchingFields.length >= 3 && verification.candidatePartyId) {
       next.verifiedPartyId = verification.candidatePartyId;
+      next.verificationSubjectPartyId = verification.candidatePartyId;
       next.phase = PHASES.RESOLVE_INTENT;
       events.push({ type: "identity_verified", partyId: verification.candidatePartyId });
     }
+  }
+
+  applyObservedHumanTransferChoice(next, observation.humanTransferChoice, events);
+
+  if (
+    next.phase === PHASES.POST_PROCESS
+    && next.verifiedPartyId
+    && next.resolvedCaseId
+    && next.emailSummary.state === "awaiting_choice"
+    && isActionableClaimIntent(observation.intent)
+  ) {
+    next.phase = PHASES.PROCESS_CASE;
+    next.emailSummary = { state: "not_offered" };
+    events.push({ type: "case_reentered", caseId: next.resolvedCaseId });
   }
 
   if (next.phase === PHASES.RESOLVE_INTENT && next.verifiedPartyId) {
@@ -43,8 +113,12 @@ export function applyObservation(session, observation, data) {
     next.caseResolution = resolution;
     if (resolution.status === "resolved") {
       next.resolvedCaseId = resolution.candidateCaseIds[0];
-      next.phase = PHASES.PROCESS_CASE;
-      events.push({ type: "case_resolved", caseId: next.resolvedCaseId });
+      if (isActionableClaimIntent(next.intent)) {
+        next.phase = PHASES.PROCESS_CASE;
+        events.push({ type: "case_resolved", caseId: next.resolvedCaseId });
+      }
+    } else {
+      next.resolvedCaseId = null;
     }
   }
 
@@ -56,6 +130,7 @@ export function markCaseComplete(session) {
     throw new Error("case can only be completed from PROCESS_CASE with a resolved case");
   }
   const next = structuredClone(session);
+  clearPendingHumanTransfer(next);
   next.phase = PHASES.POST_PROCESS;
   next.emailSummary.state = "awaiting_choice";
   return next;
@@ -78,11 +153,15 @@ export function offerHumanTransfer(session) {
 }
 
 export function chooseHumanTransfer(session, choice) {
-  if (session.humanTransfer?.state !== "awaiting_choice") {
-    throw new Error("human transfer choice is only valid while awaiting a choice");
-  }
   if (choice !== "accept" && choice !== "decline") {
     throw new Error("human transfer choice must be accept or decline");
+  }
+  const state = session.humanTransfer?.state ?? "not_offered";
+  if (choice === "decline" && state !== "awaiting_choice") {
+    throw new Error("human transfer decline is only valid while awaiting a choice");
+  }
+  if (choice === "accept" && !["not_offered", "awaiting_choice", "declined"].includes(state)) {
+    throw new Error("human transfer request is already recorded");
   }
   const next = structuredClone(session);
   next.humanTransferOffered = true;
@@ -95,14 +174,15 @@ export function publicView(session, data) {
   const resolvedClaim = claimAccess && session.resolvedCaseId
     ? data.claims.find((claim) => claim.case_id === session.resolvedCaseId) ?? null
     : null;
+  const identity = {
+    providedFields: PII_FIELDS.filter((field) => hasValue(session.identity[field])),
+    verified: Boolean(session.verifiedPartyId),
+  };
+  if (identity.verified) identity.matchingFields = [...session.verification.matchingFields];
 
   return {
     phase: session.phase,
-    identity: {
-      providedFields: PII_FIELDS.filter((field) => hasValue(session.identity[field])),
-      matchingFields: [...session.verification.matchingFields],
-      verified: Boolean(session.verifiedPartyId),
-    },
+    identity,
     callerRole: session.callerRole,
     rememberedCaseHint: structuredClone(session.caseHint),
     caseResolution: structuredClone(session.caseResolution),
@@ -116,22 +196,28 @@ export function publicView(session, data) {
 }
 
 export function evaluateVerification(identity, policyholders) {
-  const candidates = policyholders
-    .map((party) => ({ party, matchingFields: matchingPiiFields(identity, party) }))
-    .filter(({ party, matchingFields }) =>
-      matchingFields.length > 0 || policyNumberMatches(identity.policyNumber, party.policy_number),
-    );
+  const ranked = policyholders.map((party) => ({ party, matchingFields: matchingPiiFields(identity, party) }));
+  const bestCount = Math.max(0, ...ranked.map(({ matchingFields }) => matchingFields.length));
+  const best = ranked.filter(({ matchingFields }) => matchingFields.length === bestCount);
 
-  const policyMatches = candidates.filter(({ party }) => policyNumberMatches(identity.policyNumber, party.policy_number));
-  const pool = policyMatches.length === 1 ? policyMatches : candidates;
-  const bestCount = Math.max(0, ...pool.map(({ matchingFields }) => matchingFields.length));
-  const best = pool.filter(({ matchingFields }) => matchingFields.length === bestCount);
-
-  if (best.length !== 1) return { candidatePartyId: null, matchingFields: [] };
+  if (bestCount === 0 || best.length !== 1) return { candidatePartyId: null, matchingFields: [] };
+  if (policyNumberContradictsParty(identity.policyNumber, best[0].party, policyholders)) {
+    return { candidatePartyId: null, matchingFields: [] };
+  }
   return {
     candidatePartyId: best[0].party.party_id,
     matchingFields: best[0].matchingFields,
   };
+}
+
+function evaluateVerificationForParty(identity, partyId, policyholders) {
+  const party = policyholders.find((candidate) => candidate.party_id === partyId);
+  if (!party) return { candidatePartyId: null, matchingFields: [] };
+  const matchingFields = matchingPiiFields(identity, party);
+  if (policyNumberContradictsParty(identity.policyNumber, party, policyholders)) {
+    return { candidatePartyId: null, matchingFields: [] };
+  }
+  return { candidatePartyId: party.party_id, matchingFields };
 }
 
 export function resolveCase(partyId, hint, claims) {
@@ -153,42 +239,33 @@ export function resolveCase(partyId, hint, claims) {
   return { status: "no_match", candidateCaseIds: [] };
 }
 
-function shouldRetargetResolvedCase(session, observation = {}, data) {
-  if (session.phase !== PHASES.PROCESS_CASE || !session.verifiedPartyId || !session.resolvedCaseId) return false;
-  const hint = observation.caseHint ?? {};
-  if (!Object.values(hint).some(hasValue)) return false;
-
-  const claim = data.claims.find((item) =>
-    item.case_id === session.resolvedCaseId && item.party_id === session.verifiedPartyId,
-  );
-  if (!claim) return false;
-
-  if (hasValue(hint.caseId) && normalizeCaseId(hint.caseId) !== normalizeCaseId(claim.case_id)) return true;
-  if (hasValue(hint.caseType) && normalizeCaseType(hint.caseType) !== claim.case_type) return true;
-  if (hasValue(hint.status) && normalizeStatus(hint.status) !== claim.status) return true;
-  if (hasValue(hint.year) && Number(hint.year) !== Number(claim.created_at.slice(0, 4))) return true;
-  if (hasValue(hint.month) && Number(hint.month) !== Number(claim.created_at.slice(5, 7))) return true;
-  return false;
-}
-
-function resetResolvedCaseTarget(session) {
-  session.phase = PHASES.RESOLVE_INTENT;
+function resetCaseTarget(session) {
+  session.phase = session.verifiedPartyId ? PHASES.RESOLVE_INTENT : PHASES.VERIFY_ID;
   session.caseHint = {};
   session.caseResolution = { status: "unresolved", candidateCaseIds: [] };
   session.resolvedCaseId = null;
-  session.intent = null;
-  session.humanTransferOffered = false;
-  session.humanTransfer = { state: "not_offered" };
   session.emailSummary = { state: "not_offered" };
+  clearPendingHumanTransfer(session);
 }
 
-function mergeObservation(session, observation = {}) {
+function revokeAuthorization(session) {
+  session.verifiedPartyId = null;
+  session.phase = PHASES.VERIFY_ID;
+  session.verification = { candidatePartyId: null, matchingFields: [] };
+  session.caseHint = {};
+  session.caseResolution = { status: "unresolved", candidateCaseIds: [] };
+  session.resolvedCaseId = null;
+  session.emailSummary = { state: "not_offered" };
+  clearPendingHumanTransfer(session);
+}
+
+function mergeObservation(session, observation = {}, { mergeCaseHint = true } = {}) {
   if (observation.identity) {
     for (const [key, value] of Object.entries(observation.identity)) {
       if (hasValue(value)) session.identity[key] = String(value).trim();
     }
   }
-  if (observation.caseHint) {
+  if (mergeCaseHint && observation.caseHint) {
     for (const [key, value] of Object.entries(observation.caseHint)) {
       if (hasValue(value)) session.caseHint[key] = value;
     }
@@ -201,17 +278,37 @@ function mergeObservation(session, observation = {}) {
       session.callerRole = observation.callerRole;
     }
   }
-  if (hasValue(observation.intent)) session.intent = observation.intent;
+  if (hasValue(observation.intent) && observation.intent !== "unknown") session.intent = observation.intent;
   if (hasValue(observation.emotion)) session.emotion = observation.emotion;
   if (typeof observation.refusal === "boolean") session.refusal = observation.refusal;
   if (hasValue(observation.scope)) session.lastScope = observation.scope;
 }
 
+function applyObservedHumanTransferChoice(session, choice, events) {
+  if (choice === "accept") {
+    if (session.humanTransfer?.state !== "requested") {
+      session.humanTransferOffered = true;
+      session.humanTransfer = { state: "requested" };
+      events.push({ type: "human_transfer_requested" });
+    }
+  } else if (choice === "decline" && session.humanTransfer?.state === "awaiting_choice") {
+    session.humanTransferOffered = true;
+    session.humanTransfer = { state: "declined" };
+    events.push({ type: "human_transfer_declined" });
+  }
+}
+
 function setHumanTransferPending(session) {
+  if (session.phase === PHASES.POST_PROCESS && session.emailSummary?.state === "awaiting_choice") return;
   session.humanTransferOffered = true;
   if (!session.humanTransfer) session.humanTransfer = { state: "not_offered" };
-  if (session.humanTransfer.state === "not_offered") {
-    session.humanTransfer.state = "awaiting_choice";
+  if (session.humanTransfer.state === "not_offered") session.humanTransfer.state = "awaiting_choice";
+}
+
+function clearPendingHumanTransfer(session) {
+  if (session.humanTransfer?.state === "awaiting_choice") {
+    session.humanTransfer = { state: "not_offered" };
+    session.humanTransferOffered = false;
   }
 }
 
@@ -225,13 +322,39 @@ function matchingPiiFields(identity, party) {
   return fields;
 }
 
+function identityValuesEqual(field, left, right) {
+  const normalizers = {
+    name: normalizeName,
+    dob: normalizeDate,
+    phone: normalizePhone,
+    email: normalizeEmail,
+    idLast4: normalizeIdLast4,
+  };
+  const normalize = normalizers[field] ?? ((value) => String(value ?? "").trim());
+  return normalize(left) === normalize(right);
+}
+
 function anyEqual(value, candidates, normalize) {
   const target = normalize(value);
   return target !== "" && candidates.some((candidate) => normalize(candidate) === target);
 }
 
 function policyNumberMatches(value, expected) {
-  return hasValue(value) && String(value).trim().toUpperCase() === String(expected).trim().toUpperCase();
+  return hasValue(value) && normalizePolicyNumber(value) === normalizePolicyNumber(expected);
+}
+
+function normalizePolicyNumber(value) {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+function policyNumberContradictsParty(value, party, policyholders) {
+  if (!hasValue(value)) return false;
+  const matches = policyholders.filter((candidate) => policyNumberMatches(value, candidate.policy_number));
+  return matches.length === 1 && matches[0].party_id !== party.party_id;
+}
+
+function isActionableClaimIntent(intent) {
+  return ACTIONABLE_CLAIM_INTENTS.has(intent);
 }
 
 function normalizeName(value) {

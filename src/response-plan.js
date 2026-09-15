@@ -1,6 +1,14 @@
 import { PHASES, PII_FIELDS } from "./domain.js";
 import { buildCaseGrounding } from "./grounding.js";
 
+const ACTIONABLE_CLAIM_INTENTS = new Set([
+  "denial_question",
+  "status_inquiry",
+  "document_submission",
+  "next_steps",
+  "general_claim_question",
+]);
+
 export function buildResponsePlan({ session, observation, userText, data, asOfDate, events = [] }) {
   const scope = scopePlan(session, observation);
   const common = {
@@ -12,6 +20,20 @@ export function buildResponsePlan({ session, observation, userText, data, asOfDa
     humanTransfer: structuredClone(session.humanTransfer ?? { state: "not_offered" }),
   };
 
+  if (session.callerRole === "representative" && !session.verifiedPartyId) {
+    return {
+      ...common,
+      task: "route_representative_to_human",
+      protectedClaimDetailsAvailable: false,
+      conversationPolicy: {
+        explainPolicyholderAuthorityWasRevokedIfNeeded: events.some((event) => event.type === "authorization_revoked"),
+        explainRepresentativeAuthorizationRequiresHuman: true,
+        handoffRequestRecorded: session.humanTransfer?.state === "requested",
+        doNotClaimLiveTransfer: session.humanTransfer?.state === "requested",
+      },
+    };
+  }
+
   if (observation.scope === "out_of_scope") {
     return {
       ...common,
@@ -21,23 +43,42 @@ export function buildResponsePlan({ session, observation, userText, data, asOfDa
     };
   }
 
+  const transferEvent = [...events].reverse().find((event) =>
+    event.type === "human_transfer_requested" || event.type === "human_transfer_declined",
+  );
+  if (transferEvent) {
+    return {
+      ...common,
+      task: "record_human_transfer_choice",
+      protectedClaimDetailsAvailable: Boolean(session.verifiedPartyId),
+      emailSummary: structuredClone(session.emailSummary),
+      conversationPolicy: {
+        transferChoice: transferEvent.type === "human_transfer_requested" ? "requested" : "declined",
+        doNotClaimLiveTransfer: transferEvent.type === "human_transfer_requested",
+        continueEmailChoiceIfStillPending: session.emailSummary?.state === "awaiting_choice",
+      },
+    };
+  }
+
   if (session.phase === PHASES.VERIFY_ID) {
-    const remaining = PII_FIELDS.filter((field) => !session.verification.matchingFields.includes(field));
+    const provided = PII_FIELDS.filter((field) => hasValue(session.identity[field]));
+    const additional = PII_FIELDS.filter((field) => !provided.includes(field));
     return {
       ...common,
       task: "continue_identity_verification",
       protectedClaimDetailsAvailable: false,
       verification: {
-        matchingFieldCount: session.verification.matchingFields.length,
-        matchingFields: [...session.verification.matchingFields],
-        acceptableRemainingFields: remaining,
-        explanation: "Claim details are protected until at least three distinct PII fields match the policyholder record.",
+        providedFields: provided,
+        acceptableAdditionalFields: additional,
+        requiredDistinctMatches: 3,
+        explanation: "Claim details are protected until at least three distinct PII fields match the policyholder record. Do not reveal which supplied values matched or how many matched.",
       },
       rememberedCaseHint: structuredClone(session.caseHint),
       conversationPolicy: {
         acknowledgeEmotionFirst: observation.emotion !== "neutral" || observation.refusal,
         explainWhyVerificationIsRequired: true,
         persuadeWithoutBypassingGate: true,
+        neverRevealPreVerificationCorrectness: true,
         stopPersuadingAndOfferHuman: session.humanTransferOffered,
       },
     };
@@ -62,6 +103,21 @@ export function buildResponsePlan({ session, observation, userText, data, asOfDa
           acknowledgeIdentityVerified: true,
           askWhatClaimOrIssueNeedsHelp: true,
           doNotInterpretCurrentTurnAsCaseIdentifier: true,
+        },
+      };
+    }
+
+    if (session.caseResolution.status === "resolved" && session.resolvedCaseId && !isActionableClaimIntent(session.intent)) {
+      return {
+        ...common,
+        task: "request_actionable_intent_for_resolved_case",
+        protectedClaimDetailsAvailable: true,
+        rememberedCaseHint: structuredClone(session.caseHint),
+        caseResolution: structuredClone(session.caseResolution),
+        caseCandidates: candidateSummaries(session, data),
+        conversationPolicy: {
+          keepResolvedClaimTarget: true,
+          askWhatHelpCallerWants: true,
         },
       };
     }
@@ -147,9 +203,17 @@ function hasUsefulCaseHint(hint = {}) {
   return Object.values(hint).some((value) => value !== undefined && value !== null && String(value).trim() !== "");
 }
 
+function isActionableClaimIntent(intent) {
+  return ACTIONABLE_CLAIM_INTENTS.has(intent);
+}
+
 function phaseTask(phase) {
   if (phase === PHASES.VERIFY_ID) return "continue_identity_verification";
   if (phase === PHASES.RESOLVE_INTENT) return "resolve_case_or_ask_targeted_clarification";
   if (phase === PHASES.PROCESS_CASE) return "answer_from_grounded_case_data";
   return "offer_or_resolve_email_summary_choice";
+}
+
+function hasValue(value) {
+  return value !== undefined && value !== null && String(value).trim() !== "";
 }
