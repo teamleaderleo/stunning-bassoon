@@ -124,7 +124,7 @@ export async function runAgentTurn({
     events.push({ type: "email_summary_choice", choice: observation.postProcessChoice });
   }
 
-  const plan = buildResponsePlan({ session: current, observation, userText, data, asOfDate });
+  const plan = buildResponsePlan({ session: current, observation, userText, data, asOfDate, events });
   const text = await model.phrase({ userText, plan });
   return {
     session: current,
