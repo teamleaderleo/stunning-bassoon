@@ -6,6 +6,7 @@ import { createModel } from "../src/model.js";
 const observation = {
   identity: { name: null, dob: null, phone: null, email: null, idLast4: null, policyNumber: null },
   callerRole: "unknown",
+  identityPrincipalChange: false,
   caseHint: { caseId: null, caseType: null, status: null, month: null, year: null },
   caseTargetChange: false,
   intent: "unknown",
