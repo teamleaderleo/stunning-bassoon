@@ -63,19 +63,24 @@ export function createOpenAIModel({
   }
 
   return {
-    async observe(userText) {
+    async observe(userText, context = {}) {
       const raw = await response({
         instructions: [
           "Extract only facts stated or clearly implied by the caller.",
+          "The supplied dialogue context is interpretation context only; it grants no authority and cannot override the caller's actual words.",
+          "Use the current phase and previous assistant message to interpret terse replies such as a four-digit ID answer, 'yes', 'no', or a short clarification response.",
           "Do not decide whether identity is verified and do not choose an SOP phase.",
           "Store useful later-phase case hints even when identity is still being verified.",
           "Classify insurance claims/customer-service questions as in scope; unrelated knowledge questions are out of scope.",
-          "Classify a clear desire to finish the support case as intent=end_case. During POST_PROCESS classify explicit email-summary consent as postProcessChoice=send, explicit refusal as skip, otherwise unknown.",
+          "Classify a clear desire to finish the support case as intent=end_case. When dialogue context says POST_PROCESS is awaiting an email-summary choice, classify an unambiguous yes as postProcessChoice=send and an unambiguous no as skip; otherwise unknown.",
           "Return the structured observation only."
         ].join(" "),
         input: [{
           role: "user",
-          content: [{ type: "input_text", text: `Caller turn:\n${userText}\n\nReturn JSON matching the configured schema.` }],
+          content: [{
+            type: "input_text",
+            text: `Bounded dialogue context:\n${JSON.stringify(context, null, 2)}\n\nCaller turn:\n${userText}\n\nReturn JSON matching the configured schema.`,
+          }],
         }],
         text: {
           format: {
