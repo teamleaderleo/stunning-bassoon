@@ -11,6 +11,7 @@ function expiredMargaretSession(transferState) {
   const session = applyObservation(newSession(), {
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
+    intent: "next_steps",
     scope: "in_scope",
   }, data).session;
   session.humanTransferOffered = transferState !== "not_offered";
@@ -21,12 +22,8 @@ function expiredMargaretSession(transferState) {
 function planFor(transferState) {
   return buildResponsePlan({
     session: expiredMargaretSession(transferState),
-    observation: {
-      emotion: "frustrated",
-      refusal: false,
-      scope: "in_scope",
-    },
-    userText: "This is ridiculous. There has to be something you can do. Just make an exception.",
+    observation: { emotion: "frustrated", refusal: false, scope: "in_scope" },
+    userText: "Please review my options.",
     data,
     asOfDate: "2026-09-15",
   });
