@@ -41,7 +41,7 @@ test("end_case and explicit email consent move through POST_PROCESS under code c
   assert.deepEqual(result.events.at(-1), { type: "email_summary_choice", choice: "send" });
 });
 
-test("email preview is built only after explicit send consent from grounded case data", () => {
+test("pre-deadline email preview keeps the active document-submission path", () => {
   let session = applyObservation(newSession(), {
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
@@ -54,11 +54,51 @@ test("email preview is built only after explicit send consent from grounded case
   const preview = buildEmailPreview(session, data, [
     { observation: { intent: "denial_question" } },
     { observation: { intent: "next_steps" } },
-  ]);
+  ], { asOfDate: "2026-03-01" });
 
   assert.equal(preview.to, "margaret@email.com");
   assert.match(preview.subject, /CL-2048/);
   assert.match(preview.body, /Claim status\/outcome: denied/i);
-  assert.match(preview.body, /pathology report, office note/i);
-  assert.match(preview.body, /2026-03-18/);
+  assert.match(preview.body, /Provide: pathology report, office note/i);
+  assert.match(preview.body, /Appeal deadline: 2026-03-18/i);
+});
+
+test("expired appeal email preview does not reactivate document submission", () => {
+  let session = applyObservation(newSession(), {
+    identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
+    caseHint: { caseId: "CL-2048" },
+    scope: "in_scope",
+  }, data).session;
+
+  session.phase = "POST_PROCESS";
+  session.emailSummary.state = "send";
+  session.humanTransfer = { state: "declined" };
+  session.humanTransferOffered = true;
+
+  const preview = buildEmailPreview(session, data, [
+    { observation: { intent: "denial_question" } },
+  ], { asOfDate: "2026-09-15" });
+
+  assert.match(preview.body, /appeal deadline \(2026-03-18\) has passed/i);
+  assert.match(preview.body, /No supported late-appeal or reopening path/i);
+  assert.match(preview.body, /human representative was offered and declined/i);
+  assert.doesNotMatch(preview.body, /Provide: pathology report, office note/i);
+});
+
+test("requested human handoff is summarized without claiming a live transfer", () => {
+  let session = applyObservation(newSession(), {
+    identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
+    caseHint: { caseId: "CL-2048" },
+    scope: "in_scope",
+  }, data).session;
+
+  session.phase = "POST_PROCESS";
+  session.emailSummary.state = "send";
+  session.humanTransfer = { state: "requested" };
+  session.humanTransferOffered = true;
+
+  const preview = buildEmailPreview(session, data, [], { asOfDate: "2026-09-15" });
+
+  assert.match(preview.body, /handoff was requested in the demo/i);
+  assert.match(preview.body, /no live transfer occurred/i);
 });
