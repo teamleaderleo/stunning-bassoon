@@ -8,6 +8,7 @@ export function buildObservationContext(session, previousAssistantText = null) {
     previousAssistantText: boundedText(previousAssistantText),
     callerRole: session.callerRole,
     providedIdentityFields: PII_FIELDS.filter((field) => hasValue(session.identity[field])),
+    freshPrincipalVerification: Boolean(session.principalReplacementPending),
     rememberedCaseHint: structuredClone(session.caseHint),
     caseResolutionStatus: session.caseResolution.status,
     humanTransferState: session.humanTransfer?.state ?? "not_offered",
