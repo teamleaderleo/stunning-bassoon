@@ -1,7 +1,7 @@
 import { PHASES, PII_FIELDS } from "./domain.js";
 import { buildCaseGrounding } from "./grounding.js";
 
-export function buildResponsePlan({ session, observation, userText, data, asOfDate }) {
+export function buildResponsePlan({ session, observation, userText, data, asOfDate, events = [] }) {
   const scope = scopePlan(session, observation);
   const common = {
     phase: session.phase,
@@ -44,6 +44,28 @@ export function buildResponsePlan({ session, observation, userText, data, asOfDa
   }
 
   if (session.phase === PHASES.RESOLVE_INTENT) {
+    const identityVerifiedThisTurn = events.some((event) => event.type === "identity_verified");
+    const noRememberedCaseHint = !hasUsefulCaseHint(session.caseHint);
+    if (identityVerifiedThisTurn && noRememberedCaseHint && session.caseResolution.status === "unresolved") {
+      return {
+        ...common,
+        task: "acknowledge_identity_verified_and_request_case_intent",
+        protectedClaimDetailsAvailable: true,
+        rememberedCaseHint: {},
+        caseResolution: structuredClone(session.caseResolution),
+        caseCandidates: [],
+        transition: {
+          identityVerifiedThisTurn: true,
+          currentTurnPurpose: "identity_verification_answer",
+        },
+        conversationPolicy: {
+          acknowledgeIdentityVerified: true,
+          askWhatClaimOrIssueNeedsHelp: true,
+          doNotInterpretCurrentTurnAsCaseIdentifier: true,
+        },
+      };
+    }
+
     return {
       ...common,
       task: "resolve_case_or_ask_targeted_clarification",
@@ -119,6 +141,10 @@ function candidateSummaries(session, data) {
       status: claim.status,
       summary: claim.summary,
     }));
+}
+
+function hasUsefulCaseHint(hint = {}) {
+  return Object.values(hint).some((value) => value !== undefined && value !== null && String(value).trim() !== "");
 }
 
 function phaseTask(phase) {
