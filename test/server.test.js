@@ -47,6 +47,7 @@ test("demo server creates a session and serves a guarded chat turn", async (t) =
   assert.equal(turn.view.claimAccess, "locked");
   assert.equal(turn.view.resolvedClaim, null);
   assert.deepEqual(turn.view.rememberedCaseHint, { caseType: "healthcare", status: "denied", month: 1 });
+  assert.equal(Object.hasOwn(turn, "events"), false);
   assert.deepEqual(turn.lastTurn.observation.identityFields, ["name", "dob"]);
   assert.deepEqual(turn.lastTurn.observation.caseHintFields, ["caseType", "status", "month"]);
   assert.equal(turn.lastTurn.controller.phase, "VERIFY_ID");
@@ -88,4 +89,28 @@ test("last-turn inspector strips event payloads and observed values", () => {
   });
   const serialized = JSON.stringify(inspector);
   assert.doesNotMatch(serialized, /Margaret|4472|CL-2048|healthcare|P9/);
+});
+
+test("model provider failures return safe evaluator-facing guidance", async (t) => {
+  const model = {
+    async observe() { throw new Error("model request failed (401)"); },
+    async phrase() { throw new Error("should not run"); },
+  };
+  const server = createDemoServer({ model });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const { port } = server.address();
+  const base = `http://127.0.0.1:${port}`;
+
+  const sessionResponse = await fetch(`${base}/api/session`, { method: "POST" });
+  const created = await sessionResponse.json();
+  const chatResponse = await fetch(`${base}/api/chat`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ sessionId: created.sessionId, text: "Hello" }),
+  });
+  assert.equal(chatResponse.status, 502);
+  assert.deepEqual(await chatResponse.json(), {
+    error: "The model provider rejected the configured credentials. Check MODEL_API_KEY.",
+  });
 });
