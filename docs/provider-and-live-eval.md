@@ -70,7 +70,14 @@ Successful runs print one compact line per scenario. Failures print the transcri
 
 `.github/workflows/live-eval.yml` is an explicit paid path and never runs on normal pushes or pull requests. It is authorized for the repository owner and reads the provider key from the repository Actions secret `MODEL_API_KEY`.
 
-The existing queue path uses the exact `/run-live-eval` command on issue #30; the workflow can also be launched manually from GitHub Actions by the authorized owner. Scenario jobs run independently, upload JSON results, and aggregate a readable report artifact.
+The queue issue supports both a full run and targeted scenario subsets:
+
+```text
+/run-live-eval
+/run-live-eval principal-replacement,natural-human-transfer
+```
+
+Only known scenario IDs are accepted. This lets semantic changes be checked without repeatedly paying to rerun already-stable scenarios. The workflow can also be launched manually from GitHub Actions by the authorized owner. Scenario jobs run independently, upload JSON results, and aggregate a readable report artifact.
 
 This workflow is retained as behavioral evidence and final-frozen-submission tooling. Presentation/setup-only changes should use deterministic CI instead of re-running the paid suite.
 
