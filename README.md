@@ -14,7 +14,7 @@ caller language
   -> LLM phrasing
 ```
 
-![SOP-Guided Claims Agent showing chat, SOP state, and the last-turn controller seam](docs/sop-guided-claims-agent.png)
+![SOP-Guided Claims Agent showing chat, SOP state, and the last-turn controller seam](docs/sop-guided-claims-agent.webp)
 
 ## Run it
 
