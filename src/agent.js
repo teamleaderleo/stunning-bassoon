@@ -23,6 +23,7 @@ const HUMAN_TRANSFER_ACCEPT = new Set([
   "do it",
   "connect me",
   "transfer me",
+  "request human representative",
 ]);
 
 const HUMAN_TRANSFER_DECLINE = new Set([
@@ -33,6 +34,7 @@ const HUMAN_TRANSFER_DECLINE = new Set([
   "nope",
   "don't",
   "do not",
+  "continue here",
 ]);
 
 export async function runAgentTurn({
