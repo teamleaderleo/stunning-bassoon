@@ -41,7 +41,7 @@ jobs:
   plan:
     if: >-
       (github.event_name == 'workflow_dispatch' && github.actor == 'teamleaderleo') ||
-      (github.event_name == 'issue_comment' && github.event.issue.number == 30 && github.event.comment.user.login == 'teamleaderleo' && github.event.comment.body == '/run-live-eval')
+      (github.event_name == 'issue_comment' && github.event.issue.number == 30 && github.event.comment.user.login == 'teamleaderleo' && (github.event.comment.body == '/run-live-eval' || startsWith(github.event.comment.body, '/run-live-eval ')))
     runs-on: ubuntu-latest
     outputs:
       scenarios: ${{ steps.matrix.outputs.scenarios }}
@@ -80,7 +80,15 @@ jobs:
           fi
       - id: matrix
         name: Build scenario matrix
-        run: echo "scenarios=$(node eval/list-live-scenarios.js)" >> "$GITHUB_OUTPUT"
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          filter=""
+          if [ "$EVENT_NAME" = "issue_comment" ] && [[ "$COMMENT_BODY" == "/run-live-eval "* ]]; then
+            filter="${COMMENT_BODY#/run-live-eval }"
+          fi
+          echo "scenarios=$(node eval/list-live-scenarios.js "$filter")" >> "$GITHUB_OUTPUT"
 
   live-scenario:
     needs: plan
