@@ -2,7 +2,7 @@ name: test
 
 on:
   push:
-    branches: [main]
+    branches: [main, submission/evaluator-presentation-pass]
   pull_request:
 
 jobs:
@@ -19,3 +19,25 @@ jobs:
       - run: node --check eval/list-live-scenarios.js
       - run: node --check eval/aggregate-live.js
       - run: docker build -t stunning-bassoon .
+      - name: Docker runtime smoke test
+        run: |
+          docker run -d --rm --name stunning-bassoon-smoke -p 3000:3000 \
+            -e MODEL_API_KEY=ci-placeholder \
+            -e MODEL_BASE_URL=http://127.0.0.1:9 \
+            -e MODEL_ID=ci-placeholder \
+            -e MODEL_REASONING_EFFORT=low \
+            stunning-bassoon
+          trap 'docker logs stunning-bassoon-smoke || true; docker stop stunning-bassoon-smoke || true' EXIT
+
+          ready=0
+          for attempt in {1..20}; do
+            if curl -fsS http://127.0.0.1:3000/ > /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+
+          curl -fsS http://127.0.0.1:3000/ > /dev/null
+          node -e '(async () => { const response = await fetch("http://127.0.0.1:3000/api/session", { method: "POST" }); const body = await response.json(); if (!response.ok || !body.sessionId || body.view?.phase !== "VERIFY_ID") process.exit(1); })().catch(() => process.exit(1))'
