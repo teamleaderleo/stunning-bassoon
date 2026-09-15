@@ -186,6 +186,7 @@ export function chooseHumanTransfer(session, choice) {
   const next = structuredClone(session);
   next.humanTransferOffered = true;
   next.humanTransfer.state = choice === "accept" ? "requested" : "declined";
+  restoreDeferredEmailChoice(next);
   return next;
 }
 
@@ -328,22 +329,31 @@ function applyObservedHumanTransferChoice(session, choice, events) {
       session.humanTransfer = { state: "requested" };
       events.push({ type: "human_transfer_requested" });
     }
+    restoreDeferredEmailChoice(session);
   } else if (choice === "decline" && session.humanTransfer?.state === "awaiting_choice") {
     session.humanTransferOffered = true;
     session.humanTransfer = { state: "declined" };
     events.push({ type: "human_transfer_declined" });
+    restoreDeferredEmailChoice(session);
   }
 }
 
 function setHumanTransferPending(session, { reopenDeclined = false } = {}) {
-  if (session.phase === PHASES.POST_PROCESS && session.emailSummary?.state === "awaiting_choice") return;
-  session.humanTransferOffered = true;
   if (!session.humanTransfer) session.humanTransfer = { state: "not_offered" };
-  if (
-    session.humanTransfer.state === "not_offered"
-    || (reopenDeclined && session.humanTransfer.state === "declined")
-  ) {
-    session.humanTransfer.state = "awaiting_choice";
+  const shouldAwaitChoice = session.humanTransfer.state === "not_offered"
+    || (reopenDeclined && session.humanTransfer.state === "declined");
+  if (!shouldAwaitChoice) return;
+
+  if (session.phase === PHASES.POST_PROCESS && session.emailSummary?.state === "awaiting_choice") {
+    session.emailSummary = { state: "deferred_for_human" };
+  }
+  session.humanTransferOffered = true;
+  session.humanTransfer.state = "awaiting_choice";
+}
+
+function restoreDeferredEmailChoice(session) {
+  if (session.phase === PHASES.POST_PROCESS && session.emailSummary?.state === "deferred_for_human") {
+    session.emailSummary = { state: "awaiting_choice" };
   }
 }
 
@@ -360,7 +370,11 @@ function matchingPiiFields(identity, party) {
   if (hasValue(identity.dob) && normalizeDate(identity.dob) === normalizeDate(party.dob)) fields.push("dob");
   if (hasValue(identity.phone) && anyEqual(identity.phone, [party.phone, ...(party.phone_aliases ?? [])], normalizePhone)) fields.push("phone");
   if (hasValue(identity.email) && anyEqual(identity.email, [party.email, ...(party.email_aliases ?? [])], normalizeEmail)) fields.push("email");
-  if (hasValue(identity.idLast4) && normalizeIdLast4(identity.idLast4) === normalizeIdLast4(party.id_last4)) fields.push("idLast4");
+  if (
+    party.id_type === "ssn_last4"
+    && hasValue(identity.idLast4)
+    && normalizeIdLast4(identity.idLast4) === normalizeIdLast4(party.id_last4)
+  ) fields.push("idLast4");
   return fields;
 }
 
