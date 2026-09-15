@@ -2,7 +2,7 @@ name: test
 
 on:
   push:
-    branches: [main]
+    branches: [main, submission/evaluator-presentation-pass]
   pull_request:
 
 jobs:
