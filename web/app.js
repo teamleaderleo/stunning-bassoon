@@ -1,3 +1,5 @@
+import { renderMarkdown } from "./markdown.js";
+
 let sessionId = null;
 let busy = false;
 
@@ -51,7 +53,11 @@ async function submitTurn(text) {
 function addMessage(kind, text) {
   const item = document.createElement("div");
   item.className = `message ${kind}`;
-  item.textContent = text;
+  if (kind === "agent") {
+    item.innerHTML = renderMarkdown(text);
+  } else {
+    item.textContent = text;
+  }
   messages.append(item);
   messages.scrollTop = messages.scrollHeight;
 }
