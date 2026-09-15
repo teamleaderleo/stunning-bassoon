@@ -74,7 +74,11 @@ function render(view, emailPreview) {
     ["Email summary", view.emailSummary.state],
   ].map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join("");
   document.querySelector("#hint").textContent = JSON.stringify(view.rememberedCaseHint, null, 2);
-  document.querySelector("#claim").textContent = view.resolvedClaim ? JSON.stringify(view.resolvedClaim, null, 2) : "Locked / unresolved";
+  document.querySelector("#claim").textContent = view.resolvedClaim
+    ? JSON.stringify(view.resolvedClaim, null, 2)
+    : view.claimAccess === "unlocked"
+      ? "Unlocked / no claim resolved yet"
+      : "Locked / unresolved";
 
   renderWorkflowActions(view);
 
