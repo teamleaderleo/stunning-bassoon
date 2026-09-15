@@ -18,7 +18,8 @@ const data = loadFixtures();
 
 function obs(overrides = {}) {
   return {
-    identity: {}, callerRole: "policyholder", caseHint: {}, caseTargetChange: false,
+    identity: {}, callerRole: "policyholder", identityPrincipalChange: false,
+    caseHint: {}, caseTargetChange: false,
     intent: "unknown", humanTransferChoice: "unknown", postProcessChoice: "unknown",
     emotion: "neutral", refusal: false, scope: "in_scope", ...overrides,
   };
@@ -66,6 +67,30 @@ test("unique claim with unknown intent stays in RESOLVE_INTENT until actionable 
   assert.equal(result.session.phase, "PROCESS_CASE");
 });
 
+test("explicit claim replacement clears the old claim-coupled intent", () => {
+  const session = verifyMargaret();
+  assert.equal(session.intent, "denial_question");
+  const result = applyObservation(session, obs({
+    caseTargetChange: true,
+    caseHint: { caseType: "auto", month: 2 },
+  }), data);
+  assert.equal(result.session.intent, null);
+  assert.equal(result.session.resolvedCaseId, "CL-2102");
+  assert.equal(result.session.phase, "RESOLVE_INTENT");
+  assert.deepEqual(result.session.caseHint, { caseType: "auto", month: 2 });
+});
+
+test("explicit claim replacement uses a new actionable goal from the same turn", () => {
+  const result = applyObservation(verifyMargaret(), obs({
+    caseTargetChange: true,
+    caseHint: { caseType: "auto", month: 2 },
+    intent: "status_inquiry",
+  }), data);
+  assert.equal(result.session.intent, "status_inquiry");
+  assert.equal(result.session.resolvedCaseId, "CL-2102");
+  assert.equal(result.session.phase, "PROCESS_CASE");
+});
+
 test("late representative disclosure revokes protected access and selected claim", () => {
   const session = verifyMargaret();
   const result = applyObservation(session, obs({ callerRole: "representative" }), data);
@@ -102,6 +127,49 @@ test("identity correction never silently switches authorization to another perso
   const stillLocked = applyObservation(result.session, obs({ scope: "in_scope" }), data);
   assert.equal(stillLocked.session.verifiedPartyId, null);
   assert.equal(stillLocked.session.verificationSubjectPartyId, "P9");
+});
+
+test("explicit principal replacement starts a fresh verification epoch without stale PII", () => {
+  let session = applyObservation(newSession(), obs({
+    identity: {
+      name: "Margaret Chen",
+      dob: "1985-03-15",
+      idLast4: "4472",
+      phone: "650-521-2836",
+      email: "margaret@email.com",
+    },
+    caseHint: { caseId: "CL-2048" },
+    intent: "denial_question",
+  }), data).session;
+  assert.equal(session.verifiedPartyId, "P9");
+  assert.equal(session.resolvedCaseId, "CL-2048");
+
+  let result = applyObservation(session, obs({
+    identityPrincipalChange: true,
+    identity: { name: "Ava Lopez" },
+  }), data);
+  assert.equal(result.session.verifiedPartyId, null);
+  assert.equal(result.session.verificationSubjectPartyId, null);
+  assert.equal(result.session.phase, "VERIFY_ID");
+  assert.deepEqual(result.session.identity, { name: "Ava Lopez" });
+  assert.deepEqual(result.session.caseHint, {});
+  assert.equal(result.session.resolvedCaseId, null);
+  assert.equal(result.session.intent, null);
+  assert.equal(result.view.claimAccess, "locked");
+  assert.equal(result.events.some(e => e.type === "verification_epoch_restarted"), true);
+
+  result = applyObservation(result.session, obs({
+    identity: { dob: "1990-08-21", idLast4: "9180" },
+  }), data);
+  assert.equal(result.session.verifiedPartyId, "P7");
+  assert.equal(result.session.verificationSubjectPartyId, "P7");
+  assert.equal(result.session.phase, "RESOLVE_INTENT");
+  assert.deepEqual(result.session.identity, {
+    name: "Ava Lopez",
+    dob: "1990-08-21",
+    idLast4: "9180",
+  });
+  assert.equal(result.session.resolvedCaseId, null);
 });
 
 test("known conflicting policy number remains fail closed while policy contributes zero PII", () => {
@@ -202,6 +270,40 @@ test("natural human-transfer observation works and an explicit reconsideration r
   const result = await runAgentTurn({ session, userText: "Actually, I'd like to speak with a representative, please.", data, model, asOfDate: "2026-02-01" });
   assert.equal(result.session.humanTransfer.state, "requested");
   assert.equal(result.events.some(e => e.type === "human_transfer_requested"), true);
+});
+
+test("mandatory representative path reopens a previously declined human choice", () => {
+  let session = offerHumanTransfer(verifyMargaret());
+  session = chooseHumanTransfer(session, "decline");
+  assert.equal(session.humanTransfer.state, "declined");
+  const result = applyObservation(session, obs({ callerRole: "representative" }), data);
+  assert.equal(result.session.verifiedPartyId, null);
+  assert.equal(result.session.resolvedCaseId, null);
+  assert.equal(result.session.humanTransfer.state, "awaiting_choice");
+  assert.equal(result.session.humanTransferOffered, true);
+});
+
+test("mandatory representative path preserves an already requested handoff", () => {
+  let session = offerHumanTransfer(verifyMargaret());
+  session = chooseHumanTransfer(session, "accept");
+  const result = applyObservation(session, obs({ callerRole: "representative" }), data);
+  assert.equal(result.session.verifiedPartyId, null);
+  assert.equal(result.session.humanTransfer.state, "requested");
+  assert.equal(result.session.humanTransferOffered, true);
+});
+
+test("representative disclosure while email consent is awaiting makes human the sole active choice", () => {
+  let session = offerHumanTransfer(verifyMargaret());
+  session = chooseHumanTransfer(session, "decline");
+  session = markCaseComplete(session);
+  assert.equal(session.emailSummary.state, "awaiting_choice");
+  assert.equal(session.humanTransfer.state, "declined");
+  const result = applyObservation(session, obs({ callerRole: "representative" }), data);
+  assert.equal(result.session.emailSummary.state, "not_offered");
+  assert.equal(result.session.humanTransfer.state, "awaiting_choice");
+  const awaitingCount = [result.session.emailSummary.state, result.session.humanTransfer.state]
+    .filter((state) => state === "awaiting_choice").length;
+  assert.equal(awaitingCount, 1);
 });
 
 test("substantive POST_PROCESS turn re-enters selected claim and later end-case offers email again", async () => {
