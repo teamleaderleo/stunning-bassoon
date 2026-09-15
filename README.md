@@ -52,6 +52,8 @@ node --env-file=.env src/server.js
 Docker is a supported delivery path:
 
 ```bash
+cp .env.example .env
+# Add MODEL_API_KEY to .env
 docker build -t stunning-bassoon .
 docker run --rm -p 3000:3000 --env-file .env stunning-bassoon
 ```
@@ -60,13 +62,13 @@ docker run --rm -p 3000:3000 --env-file .env stunning-bassoon
 
 Use **Reset** between conversations. Paste each line as one caller turn.
 
-### 1. Verify, resolve, and answer in one turn
+### 1. Goaly's supplied Margaret test case
 
 ```text
-I'm the policyholder. My name is Margaret Chen, policy POL-9921. I'm calling about my denied healthcare claim from January. DOB is 1985-03-15, SSN last four is 4472. Why was it denied?
+I'm the policyholder. My name is Margaret Chen, policy POL-9921. I'm calling about my denied healthcare claim from January. DOB is 1985-03-15, SSN last four is 4472.
 ```
 
-This should move through verification and claim resolution into `PROCESS_CASE`. The **Last turn** inspector shows the observation field names and semantics, controller event types/resulting phase, and response-plan task.
+This is the assignment's test utterance verbatim. It should verify the caller, retain the denied-healthcare-January hint, resolve CL-2048 without asking which claim from scratch, and proceed using the resolved caller goal. The **Last turn** inspector shows the observation field names and semantics, controller event types/resulting phase, and response-plan task.
 
 ### 2. Terse verification, then choose a claim and intent
 
