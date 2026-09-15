@@ -15,7 +15,8 @@ export { newSession };
 export function applyObservation(session, observation = {}, data) {
   const next = structuredClone(session);
   const events = [];
-  const principalChanged = observation.identityPrincipalChange === true;
+  const principalChanged = observation.identityPrincipalChange === true
+    && hasValue(observation.identity?.name);
 
   if (principalChanged) {
     const previousPartyId = next.verifiedPartyId ?? next.verificationSubjectPartyId;
@@ -51,8 +52,11 @@ export function applyObservation(session, observation = {}, data) {
     if (hadTarget) events.push({ type: "case_retargeted", fromCaseId: previousCaseId });
   }
 
+  const allowPrincipalClaimSemantics = !principalChanged || observation.caseTargetChange === true;
   mergeObservation(next, observation, {
-    mergeCaseHint: observation.caseTargetChange === true || !next.resolvedCaseId,
+    mergeCaseHint: allowPrincipalClaimSemantics
+      && (observation.caseTargetChange === true || !next.resolvedCaseId),
+    mergeIntent: allowPrincipalClaimSemantics,
   });
 
   if (observation.scope === "out_of_scope") {
@@ -287,7 +291,7 @@ function revokeAuthorization(session) {
   clearPendingHumanTransfer(session);
 }
 
-function mergeObservation(session, observation = {}, { mergeCaseHint = true } = {}) {
+function mergeObservation(session, observation = {}, { mergeCaseHint = true, mergeIntent = true } = {}) {
   if (observation.identity) {
     for (const [key, value] of Object.entries(observation.identity)) {
       if (hasValue(value)) session.identity[key] = String(value).trim();
@@ -306,7 +310,7 @@ function mergeObservation(session, observation = {}, { mergeCaseHint = true } = 
       session.callerRole = observation.callerRole;
     }
   }
-  if (hasValue(observation.intent) && observation.intent !== "unknown") session.intent = observation.intent;
+  if (mergeIntent && hasValue(observation.intent) && observation.intent !== "unknown") session.intent = observation.intent;
   if (hasValue(observation.emotion)) session.emotion = observation.emotion;
   if (typeof observation.refusal === "boolean") session.refusal = observation.refusal;
   if (hasValue(observation.scope)) session.lastScope = observation.scope;
