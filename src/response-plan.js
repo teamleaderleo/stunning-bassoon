@@ -1,7 +1,7 @@
 import { PHASES, PII_FIELDS } from "./domain.js";
 import { buildCaseGrounding } from "./grounding.js";
 
-export function buildResponsePlan({ session, observation, userText, data }) {
+export function buildResponsePlan({ session, observation, userText, data, asOfDate }) {
   const scope = scopePlan(session, observation);
   const common = {
     phase: session.phase,
@@ -54,11 +54,27 @@ export function buildResponsePlan({ session, observation, userText, data }) {
   }
 
   if (session.phase === PHASES.PROCESS_CASE) {
+    const grounding = buildCaseGrounding(session, userText, data, { asOfDate });
+    if (grounding.temporal.appealDeadline.status === "expired") {
+      return {
+        ...common,
+        task: "explain_expired_appeal_and_offer_human",
+        protectedClaimDetailsAvailable: true,
+        grounding,
+        conversationPolicy: {
+          explainGroundedClaimFacts: true,
+          ordinarySubmissionPathIsCurrent: false,
+          doNotPromiseReReviewOrNormalProcessingTime: true,
+          stateLateAppealRuleIsUnavailable: true,
+          offerHumanRepresentative: true,
+        },
+      };
+    }
     return {
       ...common,
       task: "answer_from_grounded_case_data",
       protectedClaimDetailsAvailable: true,
-      grounding: buildCaseGrounding(session, userText, data),
+      grounding,
     };
   }
 
