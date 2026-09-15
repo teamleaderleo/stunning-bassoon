@@ -13,11 +13,11 @@ export function applyObservation(session, observation, data) {
 
   if (observation.scope === "out_of_scope" || observation.scope === "mixed") {
     next.outOfScopeAttempts += 1;
-    if (next.outOfScopeAttempts >= 3) next.humanTransferOffered = true;
+    if (next.outOfScopeAttempts >= 3) setHumanTransferPending(next);
   }
 
   if (next.phase === PHASES.VERIFY_ID && next.callerRole === "representative") {
-    next.humanTransferOffered = true;
+    setHumanTransferPending(next);
     events.push({ type: "representative_requires_human" });
     return { session: next, events, view: publicView(next, data) };
   }
@@ -65,6 +65,25 @@ export function chooseEmailSummary(session, choice) {
   return next;
 }
 
+export function offerHumanTransfer(session) {
+  const next = structuredClone(session);
+  setHumanTransferPending(next);
+  return next;
+}
+
+export function chooseHumanTransfer(session, choice) {
+  if (session.humanTransfer?.state !== "awaiting_choice") {
+    throw new Error("human transfer choice is only valid while awaiting a choice");
+  }
+  if (choice !== "accept" && choice !== "decline") {
+    throw new Error("human transfer choice must be accept or decline");
+  }
+  const next = structuredClone(session);
+  next.humanTransferOffered = true;
+  next.humanTransfer.state = choice === "accept" ? "requested" : "declined";
+  return next;
+}
+
 export function publicView(session, data) {
   const claimAccess = session.verifiedPartyId !== null;
   const resolvedClaim = claimAccess && session.resolvedCaseId
@@ -85,6 +104,7 @@ export function publicView(session, data) {
     resolvedClaim,
     outOfScopeAttempts: session.outOfScopeAttempts,
     humanTransferOffered: session.humanTransferOffered,
+    humanTransfer: structuredClone(session.humanTransfer ?? { state: "not_offered" }),
     emailSummary: structuredClone(session.emailSummary),
   };
 }
@@ -141,7 +161,7 @@ function mergeObservation(session, observation = {}) {
   if (hasValue(observation.callerRole) && observation.callerRole !== "unknown") {
     if (session.callerRole && session.callerRole !== observation.callerRole) {
       session.callerRole = "representative";
-      session.humanTransferOffered = true;
+      setHumanTransferPending(session);
     } else {
       session.callerRole = observation.callerRole;
     }
@@ -150,6 +170,14 @@ function mergeObservation(session, observation = {}) {
   if (hasValue(observation.emotion)) session.emotion = observation.emotion;
   if (typeof observation.refusal === "boolean") session.refusal = observation.refusal;
   if (hasValue(observation.scope)) session.lastScope = observation.scope;
+}
+
+function setHumanTransferPending(session) {
+  session.humanTransferOffered = true;
+  if (!session.humanTransfer) session.humanTransfer = { state: "not_offered" };
+  if (session.humanTransfer.state === "not_offered") {
+    session.humanTransfer.state = "awaiting_choice";
+  }
 }
 
 function matchingPiiFields(identity, party) {
