@@ -59,7 +59,6 @@ export function createDemoServer({ model, data = loadFixtures() } = {}) {
 
         return json(res, 200, {
           text: result.text,
-          events: result.events,
           view: result.view,
           lastTurn: buildLastTurnInspector(result),
           emailPreview: buildEmailPreview(record.session, data, record.turns),
@@ -113,6 +112,9 @@ function safeClientError(error) {
   if (message.startsWith("MODEL_REASONING_EFFORT must be one of:")) {
     return { status: 503, message: `Model configuration is invalid. ${message}` };
   }
+  if (error?.code === "ERR_INVALID_URL") {
+    return { status: 503, message: "Model configuration is invalid. Check MODEL_BASE_URL." };
+  }
 
   const status = Number(message.match(/^model request failed \((\d{3})\)$/)?.[1]);
   if (status === 401 || status === 403) {
@@ -121,11 +123,17 @@ function safeClientError(error) {
   if (status === 404) {
     return { status: 502, message: "The model provider endpoint or model was not found. Check MODEL_BASE_URL and MODEL_ID." };
   }
+  if (status === 429) {
+    return { status: 502, message: "The model provider rate limit was reached. Check the provider account or try again later." };
+  }
   if (status >= 400 && status < 500) {
     return { status: 502, message: "The model provider rejected the request. Check MODEL_BASE_URL, MODEL_ID, and provider compatibility." };
   }
   if (status >= 500) {
     return { status: 502, message: "The model provider is currently unavailable. Check the provider status and try again." };
+  }
+  if (message === "fetch failed" || error?.cause?.code === "ECONNREFUSED" || error?.cause?.code === "ENOTFOUND") {
+    return { status: 502, message: "The model provider could not be reached. Check MODEL_BASE_URL and network access." };
   }
 
   return { status: 500, message: "The claims agent could not complete the request. Check the server log for details." };
