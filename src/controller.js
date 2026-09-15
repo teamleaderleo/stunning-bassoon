@@ -9,6 +9,12 @@ export function applyObservation(session, observation, data) {
   const next = structuredClone(session);
   const events = [];
 
+  if (shouldRetargetResolvedCase(next, observation, data)) {
+    const previousCaseId = next.resolvedCaseId;
+    resetResolvedCaseTarget(next);
+    events.push({ type: "case_retargeted", fromCaseId: previousCaseId });
+  }
+
   mergeObservation(next, observation);
 
   if (observation.scope === "out_of_scope" || observation.scope === "mixed") {
@@ -145,6 +151,35 @@ export function resolveCase(partyId, hint, claims) {
   if (candidates.length === 1) return { status: "resolved", candidateCaseIds: [candidates[0].case_id] };
   if (candidates.length > 1) return { status: "ambiguous", candidateCaseIds: candidates.map((claim) => claim.case_id) };
   return { status: "no_match", candidateCaseIds: [] };
+}
+
+function shouldRetargetResolvedCase(session, observation = {}, data) {
+  if (session.phase !== PHASES.PROCESS_CASE || !session.verifiedPartyId || !session.resolvedCaseId) return false;
+  const hint = observation.caseHint ?? {};
+  if (!Object.values(hint).some(hasValue)) return false;
+
+  const claim = data.claims.find((item) =>
+    item.case_id === session.resolvedCaseId && item.party_id === session.verifiedPartyId,
+  );
+  if (!claim) return false;
+
+  if (hasValue(hint.caseId) && normalizeCaseId(hint.caseId) !== normalizeCaseId(claim.case_id)) return true;
+  if (hasValue(hint.caseType) && normalizeCaseType(hint.caseType) !== claim.case_type) return true;
+  if (hasValue(hint.status) && normalizeStatus(hint.status) !== claim.status) return true;
+  if (hasValue(hint.year) && Number(hint.year) !== Number(claim.created_at.slice(0, 4))) return true;
+  if (hasValue(hint.month) && Number(hint.month) !== Number(claim.created_at.slice(5, 7))) return true;
+  return false;
+}
+
+function resetResolvedCaseTarget(session) {
+  session.phase = PHASES.RESOLVE_INTENT;
+  session.caseHint = {};
+  session.caseResolution = { status: "unresolved", candidateCaseIds: [] };
+  session.resolvedCaseId = null;
+  session.intent = null;
+  session.humanTransferOffered = false;
+  session.humanTransfer = { state: "not_offered" };
+  session.emailSummary = { state: "not_offered" };
 }
 
 function mergeObservation(session, observation = {}) {
