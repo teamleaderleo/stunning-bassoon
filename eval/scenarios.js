@@ -2,6 +2,7 @@ export function observation(overrides = {}) {
   return {
     identity: {},
     callerRole: "policyholder",
+    identityPrincipalChange: false,
     caseHint: {},
     caseTargetChange: false,
     intent: "unknown",
