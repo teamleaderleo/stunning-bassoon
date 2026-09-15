@@ -57,7 +57,7 @@ function render(view, emailPreview) {
     ["Claim access", view.claimAccess],
     ["Case resolution", view.caseResolution.status],
     ["Irrelevant retries", String(view.outOfScopeAttempts)],
-    ["Human transfer", view.humanTransferOffered ? "offered" : "not needed"],
+    ["Human transfer", humanTransferLabel(view)],
     ["Email summary", view.emailSummary.state],
   ].map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join("");
   document.querySelector("#hint").textContent = JSON.stringify(view.rememberedCaseHint, null, 2);
@@ -69,6 +69,14 @@ function render(view, emailPreview) {
     document.querySelector("#email-meta").textContent = `To: ${emailPreview.to} · ${emailPreview.subject}`;
     document.querySelector("#email-body").textContent = emailPreview.body;
   }
+}
+
+function humanTransferLabel(view) {
+  const state = view.humanTransfer?.state;
+  if (state === "awaiting_choice") return "offered · awaiting choice";
+  if (state === "requested") return "requested";
+  if (state === "declined") return "declined";
+  return view.humanTransferOffered ? "offered" : "not needed";
 }
 
 function setBusy(busy) {
