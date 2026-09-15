@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { runAgentTurn } from "../src/agent.js";
 import {
   applyObservation,
+  chooseEmailSummary,
   chooseHumanTransfer,
   markCaseComplete,
   newSession,
@@ -233,13 +234,30 @@ test("requested handoff survives explicit claim retarget while pending offer may
   assert.equal(result.session.humanTransferOffered, true);
 });
 
-test("POST_PROCESS email consent remains the sole awaiting closed choice during irrelevant retries", () => {
+test("POST_PROCESS irrelevant retry escalation defers email consent and restores it after human choice", () => {
   let session = markCaseComplete(verifyMargaret());
   for (let index = 0; index < 3; index += 1) {
     session = applyObservation(session, obs({ scope: "out_of_scope" }), data).session;
   }
-  assert.equal(session.emailSummary.state, "awaiting_choice");
-  assert.equal(session.humanTransfer.state, "not_offered");
+
+  assert.equal(session.outOfScopeAttempts, 3);
+  assert.equal(session.humanTransferOffered, true);
+  assert.equal(session.humanTransfer.state, "awaiting_choice");
+  assert.equal(session.emailSummary.state, "deferred_for_human");
+  assert.equal(
+    [session.emailSummary.state, session.humanTransfer.state].filter((state) => state === "awaiting_choice").length,
+    1,
+  );
+
+  const declined = chooseHumanTransfer(session, "decline");
+  assert.equal(declined.humanTransfer.state, "declined");
+  assert.equal(declined.emailSummary.state, "awaiting_choice");
+  assert.equal(chooseEmailSummary(declined, "skip").emailSummary.state, "skip");
+
+  const accepted = chooseHumanTransfer(session, "accept");
+  assert.equal(accepted.humanTransfer.state, "requested");
+  assert.equal(accepted.emailSummary.state, "awaiting_choice");
+  assert.equal(chooseEmailSummary(accepted, "send").emailSummary.state, "send");
 });
 
 test("a contradictory policy locator supplied after verification revokes the same-party authorization", () => {

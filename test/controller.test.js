@@ -96,14 +96,23 @@ test("name and email aliases remain ordinary deterministic identity matches", ()
   assert.equal(result.session.phase, PHASES.RESOLVE_INTENT);
 });
 
-test("national ID last four is treated as the same bounded PII slot", () => {
-  const result = apply(newSession(), {
+test("national ID last four does not count toward the assignment's SSN-based PII gate", () => {
+  let result = apply(newSession(), {
     identity: { name: "Ma Tian", dob: "1964-09-10", idLast4: "6688" },
     scope: "in_scope",
   });
 
+  assert.equal(result.session.verifiedPartyId, null);
+  assert.equal(result.session.phase, PHASES.VERIFY_ID);
+  assert.deepEqual(result.session.verification.matchingFields.sort(), ["dob", "name"]);
+
+  result = apply(result.session, {
+    identity: { phone: "650-208-8799" },
+    scope: "in_scope",
+  });
   assert.equal(result.session.verifiedPartyId, "P12");
-  assert.deepEqual(result.session.verification.matchingFields.sort(), ["dob", "idLast4", "name"]);
+  assert.deepEqual(result.session.verification.matchingFields.sort(), ["dob", "name", "phone"]);
+  assert.equal(result.session.phase, PHASES.RESOLVE_INTENT);
 });
 
 test("an ambiguous remembered hint stops in RESOLVE_INTENT", () => {
