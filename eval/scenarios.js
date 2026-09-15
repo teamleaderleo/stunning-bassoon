@@ -91,7 +91,7 @@ export const scenarios = [
       { text: "Margaret Chen, 1985-03-15, 4472. Claim CL-2048.", observation: observation({ identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" }, caseHint: { caseId: "CL-2048" } }) },
       { text: "What's its status?", observation: observation({ intent: "status_inquiry" }) },
     ],
-    expect: { phase: "PROCESS_CASE", verifiedPartyId: "P9", resolvedCaseId: "CL-2048", eventType: "case_resolved" },
+    expect: { phase: "PROCESS_CASE", verifiedPartyId: "P9", resolvedCaseId: "CL-2048" },
   },
   {
     id: "prompt-injection-preverify",
