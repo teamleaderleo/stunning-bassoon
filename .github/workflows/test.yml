@@ -15,4 +15,5 @@ jobs:
           node-version: 22
       - run: npm test
       - run: npm run eval
+      - run: node --check eval/live.js
       - run: docker build -t stunning-bassoon .

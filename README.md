@@ -81,13 +81,17 @@ npm run eval
 
 `npm run eval` prints an inspectable transition timeline for deterministic assessment scenarios: the supplied Margaret case, cross-turn memory, mismatched PII, aliases, national-ID last four, angry refusal, mixed/out-of-scope turns, repeated irrelevant questions, ambiguous case selection, pre-verification prompt injection, representative handling, and post-process skip.
 
-An optional live-model probe uses the same real adapter:
+An optional live-model suite uses the same real adapter:
 
 ```bash
 npm run eval:live # Uses the MODEL_* variables exported above
 ```
 
-It probes the model-dependent interpretation cases separately so normal CI never makes paid external calls. Muse Spark 1.3 Contributor passed all five live scenarios on 2026-09-14 with this strict schema request format and plain-text phrasing; no JSON fallback was needed. This is a bounded compatibility probe, not a guarantee of extraction accuracy on arbitrary caller turns.
+The live suite is intentionally outside normal CI so CI never makes paid external calls. It runs model-dependent conversational scenarios including prompt injection, emotional/refusal turns, mixed scope, aliases, representative fail-closed handling, repeated irrelevant-question escalation, terse `4472` verification, ambiguous January-claim clarification, a normal open auto claim, unsupported-data refusal, POST_PROCESS skip consent, and mid-conversation claim retargeting. Multi-turn scenarios preserve the previous assistant response so they exercise the same bounded dialogue context as the browser.
+
+Successful runs print one compact line per scenario. Failures print the user/assistant transcript plus final phase, selected claim, handoff/email state, and response-plan task. Set `LIVE_EVAL_VERBOSE=1` to print every transcript. Set `LIVE_EVAL_AS_OF_DATE=YYYY-MM-DD` to override the default reproducible fixture date (`2026-09-15`).
+
+Muse Spark 1.3 Contributor passed the original five compatibility probes on 2026-09-14 with this strict schema request format and plain-text phrasing; no JSON fallback was needed. Live evals are compatibility/behavior probes, not a guarantee of extraction accuracy on arbitrary caller turns.
 
 ## Deliberate boundary
 
@@ -102,5 +106,6 @@ The supplied `consent_scenarios.json` is retained as fixture data. The requested
 - #3 chat demo and inspectable SOP state
 - #4 adversarial scenario evals
 - #9 bounded dialogue context for terse follow-ups
+- #28 expanded live conversational QA
 
 The repository is intentionally small. Prefer explicit behavior and executable scenarios over framework layers.
