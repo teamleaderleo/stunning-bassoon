@@ -24,6 +24,7 @@ export function newSession() {
     },
     verifiedPartyId: null,
     verificationSubjectPartyId: null,
+    principalReplacementPending: false,
     verification: {
       candidatePartyId: null,
       matchingFields: [],
