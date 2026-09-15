@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+const REASONING_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
+
 const TURN_OBSERVATION_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -43,11 +45,13 @@ export function createModel({
   apiKey = process.env.MODEL_API_KEY ?? process.env.OPENAI_API_KEY,
   model = process.env.MODEL_ID ?? process.env.OPENAI_MODEL,
   baseUrl = process.env.MODEL_BASE_URL ?? process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+  reasoningEffort = process.env.MODEL_REASONING_EFFORT,
   sessionId = randomUUID(),
   fetchImpl = fetch,
 } = {}) {
   if (!apiKey) throw new Error("MODEL_API_KEY is required (OPENAI_API_KEY is also supported)");
   if (!model) throw new Error("MODEL_ID is required (OPENAI_MODEL is also supported)");
+  const normalizedReasoningEffort = normalizeReasoningEffort(reasoningEffort);
 
   async function response(body) {
     const res = await fetchImpl(`${baseUrl.replace(/\/$/, "")}/responses`, {
@@ -59,7 +63,12 @@ export function createModel({
         "user-agent": "stunning-bassoon/0.1.0",
         ...(new URL(baseUrl).hostname === "opencode.ai" ? { "x-opencode-session": sessionId } : {}),
       },
-      body: JSON.stringify({ model, store: false, ...body }),
+      body: JSON.stringify({
+        model,
+        store: false,
+        ...(normalizedReasoningEffort ? { reasoning: { effort: normalizedReasoningEffort } } : {}),
+        ...body,
+      }),
     });
     if (!res.ok) {
       // Do not echo provider bodies: they can contain credentials or caller data.
@@ -139,8 +148,6 @@ export function normalizeObservation(raw) {
   };
 }
 
-// Validate the full schema locally, including nullable fields and unknown keys.
-// This deliberately implements only the keywords used by TURN_OBSERVATION_SCHEMA.
 function validateSchema(value, schema, path) {
   const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
   const types = [].concat(schema.type);
@@ -162,11 +169,20 @@ function validateSchema(value, schema, path) {
   }
 }
 
-// Preserve the original public factory for callers using the old name.
 export const createOpenAIModel = createModel;
 
 function compactObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== null && item !== undefined && item !== ""));
+}
+
+function normalizeReasoningEffort(value) {
+  if (value === undefined || value === null) return null;
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized || normalized === "provider-default") return null;
+  if (!REASONING_EFFORTS.has(normalized)) {
+    throw new Error("MODEL_REASONING_EFFORT must be one of: provider-default, none, minimal, low, medium, high, xhigh");
+  }
+  return normalized;
 }
 
 function extractOutputText(response) {
