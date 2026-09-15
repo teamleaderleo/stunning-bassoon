@@ -15,6 +15,18 @@ export { newSession };
 export function applyObservation(session, observation = {}, data) {
   const next = structuredClone(session);
   const events = [];
+  const principalChanged = observation.identityPrincipalChange === true;
+
+  if (principalChanged) {
+    const previousPartyId = next.verifiedPartyId ?? next.verificationSubjectPartyId;
+    const hadAuthorization = Boolean(next.verifiedPartyId);
+    startFreshVerificationEpoch(next);
+    if (hadAuthorization) {
+      events.push({ type: "authorization_revoked", reason: "principal_replacement" });
+    }
+    events.push({ type: "verification_epoch_restarted", fromPartyId: previousPartyId ?? null });
+  }
+
   const verifiedPartyAtStart = next.verifiedPartyId;
   const piiEvidenceChanged = Boolean(
     verifiedPartyAtStart
@@ -56,7 +68,7 @@ export function applyObservation(session, observation = {}, data) {
       revokeAuthorization(next);
       events.push({ type: "authorization_revoked", reason: "representative_disclosure" });
     }
-    setHumanTransferPending(next);
+    setHumanTransferPending(next, { reopenDeclined: true });
     applyObservedHumanTransferChoice(next, observation.humanTransferChoice, events);
     events.push({ type: "representative_requires_human" });
     return { session: next, events, view: publicView(next, data) };
@@ -244,6 +256,22 @@ function resetCaseTarget(session) {
   session.caseHint = {};
   session.caseResolution = { status: "unresolved", candidateCaseIds: [] };
   session.resolvedCaseId = null;
+  session.intent = null;
+  session.emailSummary = { state: "not_offered" };
+  clearPendingHumanTransfer(session);
+}
+
+function startFreshVerificationEpoch(session) {
+  session.phase = PHASES.VERIFY_ID;
+  session.identity = {};
+  session.callerRole = null;
+  session.verifiedPartyId = null;
+  session.verificationSubjectPartyId = null;
+  session.verification = { candidatePartyId: null, matchingFields: [] };
+  session.caseHint = {};
+  session.caseResolution = { status: "unresolved", candidateCaseIds: [] };
+  session.resolvedCaseId = null;
+  session.intent = null;
   session.emailSummary = { state: "not_offered" };
   clearPendingHumanTransfer(session);
 }
@@ -298,11 +326,16 @@ function applyObservedHumanTransferChoice(session, choice, events) {
   }
 }
 
-function setHumanTransferPending(session) {
+function setHumanTransferPending(session, { reopenDeclined = false } = {}) {
   if (session.phase === PHASES.POST_PROCESS && session.emailSummary?.state === "awaiting_choice") return;
   session.humanTransferOffered = true;
   if (!session.humanTransfer) session.humanTransfer = { state: "not_offered" };
-  if (session.humanTransfer.state === "not_offered") session.humanTransfer.state = "awaiting_choice";
+  if (
+    session.humanTransfer.state === "not_offered"
+    || (reopenDeclined && session.humanTransfer.state === "declined")
+  ) {
+    session.humanTransfer.state = "awaiting_choice";
+  }
 }
 
 function clearPendingHumanTransfer(session) {
