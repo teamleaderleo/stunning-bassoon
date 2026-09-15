@@ -10,12 +10,23 @@ const reset = document.querySelector("#reset");
 const workflowActions = document.querySelector("#workflow-actions");
 
 async function start() {
-  const response = await fetch("/api/session", { method: "POST" });
-  const data = await response.json();
-  sessionId = data.sessionId;
+  sessionId = null;
   messages.replaceChildren();
-  addMessage("agent", "Hi. I can help with an insurance claim. Before I can discuss protected claim details, I’ll need to verify your identity.");
-  render(data.view, null);
+  setBusy(true);
+  try {
+    const response = await fetch("/api/session", { method: "POST" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error ?? "Unable to initialize a demo session.");
+    sessionId = data.sessionId;
+    addMessage("agent", "Hi. I can help with an insurance claim. Before I can discuss protected claim details, I’ll need to verify your identity.");
+    render(data.view, null, null);
+  } catch (error) {
+    addMessage("system", error.message);
+    renderUnavailable();
+  } finally {
+    setBusy(false);
+    input.focus();
+  }
 }
 
 form.addEventListener("submit", async (event) => {
@@ -39,11 +50,11 @@ async function submitTurn(text) {
       body: JSON.stringify({ sessionId, text }),
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error ?? "request failed");
+    if (!response.ok) throw new Error(data.error ?? "The claims agent could not complete this turn.");
     addMessage("agent", data.text);
-    render(data.view, data.emailPreview);
+    render(data.view, data.emailPreview, data.lastTurn);
   } catch (error) {
-    addMessage("system", `Request failed: ${error.message}`);
+    addMessage("system", error.message);
   } finally {
     setBusy(false);
     input.focus();
@@ -62,7 +73,7 @@ function addMessage(kind, text) {
   messages.scrollTop = messages.scrollHeight;
 }
 
-function render(view, emailPreview) {
+function render(view, emailPreview, lastTurn) {
   document.querySelector("#phase").textContent = view.phase;
   const identityAudit = view.identity.verified
     ? [
@@ -89,6 +100,7 @@ function render(view, emailPreview) {
       ? "Unlocked / no claim resolved yet"
       : "Locked / unresolved";
 
+  renderLastTurn(lastTurn);
   renderWorkflowActions(view);
 
   const card = document.querySelector("#email-card");
@@ -97,6 +109,43 @@ function render(view, emailPreview) {
     document.querySelector("#email-meta").textContent = `To: ${emailPreview.to} · ${emailPreview.subject}`;
     document.querySelector("#email-body").textContent = emailPreview.body;
   }
+}
+
+function renderLastTurn(lastTurn) {
+  const observation = document.querySelector("#last-observation");
+  const controller = document.querySelector("#last-controller");
+  const plan = document.querySelector("#last-plan");
+
+  if (!lastTurn) {
+    observation.textContent = "Waiting for a caller turn";
+    controller.textContent = "Waiting for a caller turn";
+    plan.textContent = "Waiting for a caller turn";
+    return;
+  }
+
+  const identityFields = lastTurn.observation.identityFields.join(", ") || "none";
+  const caseHintFields = lastTurn.observation.caseHintFields.join(", ") || "none";
+  const semantics = Object.entries(lastTurn.observation.semantics)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\n") || "none";
+  observation.textContent = `identity fields: ${identityFields}\ncase hint fields: ${caseHintFields}\n${semantics}`;
+
+  const events = lastTurn.controller.events.join(", ") || "none";
+  controller.textContent = `events: ${events}\nphase: ${lastTurn.controller.phase}`;
+  plan.textContent = `task: ${lastTurn.responsePlan.task}`;
+}
+
+function renderUnavailable() {
+  document.querySelector("#phase").textContent = "SETUP REQUIRED";
+  document.querySelector("#audit").innerHTML = [
+    ["Model config", "check server environment"],
+    ["Required", "MODEL_API_KEY + MODEL_ID"],
+  ].map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`).join("");
+  document.querySelector("#hint").textContent = "Session unavailable";
+  document.querySelector("#claim").textContent = "Session unavailable";
+  renderLastTurn(null);
+  workflowActions.replaceChildren();
+  workflowActions.hidden = true;
 }
 
 function renderWorkflowActions(view) {
