@@ -15,7 +15,9 @@ function observation(overrides = {}) {
     identity: {},
     callerRole: "policyholder",
     caseHint: {},
+    caseTargetChange: false,
     intent: "unknown",
+    humanTransferChoice: "unknown",
     postProcessChoice: "unknown",
     emotion: "neutral",
     refusal: false,
@@ -38,6 +40,7 @@ test("a verified caller can retarget from a resolved healthcare claim to the Feb
   assert.equal(session.humanTransfer.state, "awaiting_choice");
 
   const result = applyObservation(session, observation({
+    caseTargetChange: true,
     caseHint: { caseType: "auto", month: 2 },
     intent: "status_inquiry",
   }), data);

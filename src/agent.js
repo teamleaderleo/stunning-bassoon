@@ -11,7 +11,7 @@ import { classifyAppealDeadline } from "./grounding.js";
 import { buildObservationContext } from "./observation-context.js";
 import { buildResponsePlan } from "./response-plan.js";
 
-const HUMAN_TRANSFER_ACCEPT = new Set([
+const GENERIC_ACCEPT = new Set([
   "yes",
   "yes please",
   "yeah",
@@ -21,12 +21,9 @@ const HUMAN_TRANSFER_ACCEPT = new Set([
   "okay",
   "please do",
   "do it",
-  "connect me",
-  "transfer me",
-  "request human representative",
 ]);
 
-const HUMAN_TRANSFER_DECLINE = new Set([
+const GENERIC_DECLINE = new Set([
   "no",
   "no thanks",
   "no thank you",
@@ -34,11 +31,28 @@ const HUMAN_TRANSFER_DECLINE = new Set([
   "nope",
   "don't",
   "do not",
+]);
+
+const HUMAN_TRANSFER_ACCEPT = new Set([
+  ...GENERIC_ACCEPT,
+  "connect me",
+  "transfer me",
+  "request human representative",
+]);
+
+const HUMAN_TRANSFER_DECLINE = new Set([
+  ...GENERIC_DECLINE,
   "continue here",
 ]);
 
-const EMAIL_SUMMARY_SEND = new Set(["send email summary"]);
-const EMAIL_SUMMARY_SKIP = new Set(["skip email"]);
+const EMAIL_SUMMARY_SEND = new Set([
+  ...GENERIC_ACCEPT,
+  "send email summary",
+]);
+const EMAIL_SUMMARY_SKIP = new Set([
+  ...GENERIC_DECLINE,
+  "skip email",
+]);
 
 export async function runAgentTurn({
   session,
@@ -48,10 +62,10 @@ export async function runAgentTurn({
   previousAssistantText = null,
   asOfDate = new Date().toISOString().slice(0, 10),
 }) {
-  const deterministicTransferChoice = classifyPendingHumanTransferChoice(session, userText);
-  if (deterministicTransferChoice) {
-    const current = chooseHumanTransfer(session, deterministicTransferChoice);
-    const requested = deterministicTransferChoice === "accept";
+  const deterministicChoice = classifyActiveClosedChoice(session, userText);
+  if (deterministicChoice?.kind === "human_transfer") {
+    const current = chooseHumanTransfer(session, deterministicChoice.choice);
+    const requested = deterministicChoice.choice === "accept";
     const event = {
       type: requested ? "human_transfer_requested" : "human_transfer_declined",
     };
@@ -64,17 +78,16 @@ export async function runAgentTurn({
       data,
       previousAssistantText,
       event,
-      observation: { humanTransferChoice: deterministicTransferChoice },
+      observation: { humanTransferChoice: deterministicChoice.choice },
       task: "record_human_transfer_choice",
       text,
     });
   }
 
-  const deterministicEmailChoice = classifyPendingEmailSummaryChoice(session, userText);
-  if (deterministicEmailChoice) {
-    const current = chooseEmailSummary(session, deterministicEmailChoice);
-    const event = { type: "email_summary_choice", choice: deterministicEmailChoice };
-    const text = deterministicEmailChoice === "send"
+  if (deterministicChoice?.kind === "email_summary") {
+    const current = chooseEmailSummary(session, deterministicChoice.choice);
+    const event = { type: "email_summary_choice", choice: deterministicChoice.choice };
+    const text = deterministicChoice.choice === "send"
       ? "Okay — I’ll prepare the conversation summary for the email address on your policy."
       : "Okay — I’ll skip the email summary.";
     return deterministicChoiceResult({
@@ -83,7 +96,7 @@ export async function runAgentTurn({
       data,
       previousAssistantText,
       event,
-      observation: { postProcessChoice: deterministicEmailChoice },
+      observation: { postProcessChoice: deterministicChoice.choice },
       task: "record_email_summary_choice",
       text,
     });
@@ -112,11 +125,16 @@ export async function runAgentTurn({
     }
   }
 
+  const humanChoiceHandled = events.some((event) =>
+    event.type === "human_transfer_requested" || event.type === "human_transfer_declined",
+  );
+
   if (current.phase === PHASES.PROCESS_CASE && observation.intent === "end_case") {
     current = markCaseComplete(current);
     events.push({ type: "case_completed" });
   } else if (
-    current.phase === PHASES.POST_PROCESS
+    !humanChoiceHandled
+    && current.phase === PHASES.POST_PROCESS
     && current.emailSummary.state === "awaiting_choice"
     && (observation.postProcessChoice === "send" || observation.postProcessChoice === "skip")
   ) {
@@ -155,19 +173,20 @@ function deterministicChoiceResult({ session, current, data, previousAssistantTe
   };
 }
 
-function classifyPendingHumanTransferChoice(session, userText) {
-  if (session.humanTransfer?.state !== "awaiting_choice") return null;
+function classifyActiveClosedChoice(session, userText) {
   const normalized = normalizeClosedChoice(userText);
-  if (HUMAN_TRANSFER_ACCEPT.has(normalized)) return "accept";
-  if (HUMAN_TRANSFER_DECLINE.has(normalized)) return "decline";
-  return null;
-}
 
-function classifyPendingEmailSummaryChoice(session, userText) {
-  if (session.phase !== PHASES.POST_PROCESS || session.emailSummary?.state !== "awaiting_choice") return null;
-  const normalized = normalizeClosedChoice(userText);
-  if (EMAIL_SUMMARY_SEND.has(normalized)) return "send";
-  if (EMAIL_SUMMARY_SKIP.has(normalized)) return "skip";
+  if (session.phase === PHASES.POST_PROCESS && session.emailSummary?.state === "awaiting_choice") {
+    if (EMAIL_SUMMARY_SEND.has(normalized)) return { kind: "email_summary", choice: "send" };
+    if (EMAIL_SUMMARY_SKIP.has(normalized)) return { kind: "email_summary", choice: "skip" };
+    return null;
+  }
+
+  if (session.humanTransfer?.state === "awaiting_choice") {
+    if (HUMAN_TRANSFER_ACCEPT.has(normalized)) return { kind: "human_transfer", choice: "accept" };
+    if (HUMAN_TRANSFER_DECLINE.has(normalized)) return { kind: "human_transfer", choice: "decline" };
+  }
+
   return null;
 }
 

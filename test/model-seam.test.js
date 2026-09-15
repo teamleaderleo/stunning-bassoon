@@ -46,6 +46,7 @@ test("PROCESS_CASE grounding is restricted to the selected verified claim", () =
   const advanced = applyObservation(newSession(), {
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
+    intent: "denial_question",
     scope: "in_scope",
   }, data);
 
@@ -66,6 +67,7 @@ test("document aliases recover the detailed supplied guidance", () => {
   const advanced = applyObservation(newSession(), {
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
+    intent: "document_submission",
     scope: "in_scope",
   }, data);
 
@@ -106,6 +108,7 @@ test("expired appeal keeps claim facts but fences the ordinary submission path",
   const advanced = applyObservation(newSession(), {
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
+    intent: "next_steps",
     scope: "in_scope",
   }, data);
 
@@ -133,6 +136,7 @@ test("pre-deadline claim still exposes ordinary submission guidance", () => {
   const advanced = applyObservation(newSession(), {
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
+    intent: "document_submission",
     scope: "in_scope",
   }, data);
 

@@ -64,9 +64,18 @@ function addMessage(kind, text) {
 
 function render(view, emailPreview) {
   document.querySelector("#phase").textContent = view.phase;
+  const identityAudit = view.identity.verified
+    ? [
+        ["Identity", "verified"],
+        ["Provided fields", view.identity.providedFields.join(", ") || "none"],
+        ["Matching fields", view.identity.matchingFields?.join(", ") || "none"],
+      ]
+    : [
+        ["Identity", "verification pending"],
+        ["Provided fields", view.identity.providedFields.join(", ") || "none yet"],
+      ];
   document.querySelector("#audit").innerHTML = [
-    ["Identity", view.identity.verified ? "verified" : `${view.identity.matchingFields.length}/3 matching PII`],
-    ["Matching fields", view.identity.matchingFields.join(", ") || "none yet"],
+    ...identityAudit,
     ["Claim access", view.claimAccess],
     ["Case resolution", view.caseResolution.status],
     ["Irrelevant retries", String(view.outOfScopeAttempts)],

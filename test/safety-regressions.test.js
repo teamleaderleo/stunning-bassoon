@@ -32,6 +32,7 @@ test("fully out-of-scope PROCESS_CASE turns receive no claim grounding", () => {
     callerRole: "policyholder",
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
+    intent: "status_inquiry",
     scope: "in_scope",
   }, data).session;
 

@@ -14,7 +14,9 @@ function baseObservation(overrides = {}) {
     identity: {},
     callerRole: "unknown",
     caseHint: {},
+    caseTargetChange: false,
     intent: "unknown",
+    humanTransferChoice: "unknown",
     postProcessChoice: "unknown",
     emotion: "neutral",
     refusal: false,
@@ -35,6 +37,7 @@ test("bounded VERIFY_ID observer context carries dialogue cues without authorita
   assert.equal(context.previousAssistantText, "Could I get the last four digits of your ID?");
   assert.equal(context.protectedClaimDetailsAvailable, false);
   assert.equal("resolvedCaseId" in context, false);
+  assert.equal("matchingIdentityFields" in context, false);
   assert.equal("claim" in context, false);
   assert.deepEqual(context.rememberedCaseHint, { caseType: "healthcare", status: "denied", month: 1 });
 });
@@ -44,6 +47,7 @@ test("a terse ID-last-four reply can finish verification using the previous assi
     callerRole: "policyholder",
     identity: { name: "Margaret Chen", dob: "1985-03-15" },
     caseHint: { caseId: "CL-2048" },
+    intent: "status_inquiry",
   }), data).session;
 
   const model = {
@@ -114,23 +118,18 @@ test("a terse verification answer is not reinterpreted as case intent after iden
   assert.match(result.text, /verified/i);
 });
 
-test("a terse yes can resolve POST_PROCESS email consent from bounded context", async () => {
+test("a terse yes deterministically resolves the active POST_PROCESS email consent", async () => {
   let session = applyObservation(newSession(), baseObservation({
     callerRole: "policyholder",
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
+    intent: "status_inquiry",
   }), data).session;
   session = markCaseComplete(session);
 
   const model = {
-    async observe(text, context) {
-      assert.equal(text, "yes");
-      assert.equal(context.phase, "POST_PROCESS");
-      assert.equal(context.emailSummaryState, "awaiting_choice");
-      assert.match(context.previousAssistantText, /email summary/i);
-      return baseObservation({ postProcessChoice: "send" });
-    },
-    async phrase({ plan }) { return `[${plan.task}]`; },
+    async observe() { throw new Error("model must not be called for a bare active yes"); },
+    async phrase() { throw new Error("model must not be called for a bare active yes"); },
   };
 
   const result = await runAgentTurn({
@@ -141,6 +140,7 @@ test("a terse yes can resolve POST_PROCESS email consent from bounded context", 
     model,
   });
 
+  assert.equal(result.observationContext.activeClosedChoice, "email_summary");
   assert.equal(result.session.emailSummary.state, "send");
   assert.deepEqual(result.events.at(-1), { type: "email_summary_choice", choice: "send" });
 });

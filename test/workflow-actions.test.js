@@ -44,6 +44,7 @@ function postProcessSession() {
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     callerRole: "policyholder",
     caseHint: { caseId: "CL-2048" },
+    intent: "status_inquiry",
     scope: "in_scope",
   }, data);
   return markCaseComplete(advanced.session);

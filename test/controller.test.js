@@ -68,6 +68,7 @@ test("identity facts can arrive over several turns", () => {
   let session = apply(newSession(), {
     identity: { name: "Margaret Chen" },
     caseHint: { caseType: "healthcare", status: "denied", month: 1 },
+    intent: "denial_question",
     scope: "in_scope",
   }).session;
 
@@ -125,6 +126,7 @@ test("mixed and irrelevant turns keep useful facts while eventually offering a h
   }).session;
   session = apply(session, { identity: { dob: "1985-03-15" }, scope: "out_of_scope" }).session;
   session = apply(session, { scope: "out_of_scope" }).session;
+  session = apply(session, { scope: "out_of_scope" }).session;
 
   assert.equal(session.identity.name, "Margaret Chen");
   assert.equal(session.identity.dob, "1985-03-15");
@@ -137,6 +139,7 @@ test("POST_PROCESS requires an explicit send or skip choice", () => {
   let session = apply(newSession(), {
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
+    intent: "status_inquiry",
     scope: "in_scope",
   }).session;
 
