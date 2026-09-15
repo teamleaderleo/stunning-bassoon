@@ -14,7 +14,7 @@ const outputPath = process.env.LIVE_EVAL_OUTPUT?.trim() || null;
 const modelId = process.env.MODEL_ID ?? process.env.OPENAI_MODEL ?? null;
 const reasoningEffort = process.env.MODEL_REASONING_EFFORT?.trim() || "provider-default";
 
-const margaretDenied = "I'm the policyholder. My name is Margaret Chen, policy POL-9921. I'm calling about my denied healthcare claim from January. DOB is 1985-03-15, SSN last four is 4472. Why was it denied?";
+const margaretDenied = "I'm the policyholder. My name is Margaret Chen, policy POL-9921. I'm calling about my denied healthcare claim from January. DOB is 1985-03-15, SSN last four is 4472.";
 const margaretAuto = "I'm Margaret Chen, DOB 1985-03-15, last four 4472. I'm calling about my auto claim from February. What's its status?";
 
 const scenarios = [
