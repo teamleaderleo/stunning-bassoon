@@ -12,6 +12,7 @@ test("end_case and explicit email consent move through POST_PROCESS under code c
   let session = applyObservation(newSession(), {
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
+    intent: "status_inquiry",
     scope: "in_scope",
   }, data).session;
 
@@ -45,6 +46,7 @@ test("pre-deadline email preview keeps the active document-submission path", () 
   let session = applyObservation(newSession(), {
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
+    intent: "denial_question",
     scope: "in_scope",
   }, data).session;
 
@@ -67,6 +69,7 @@ test("expired appeal email preview does not reactivate document submission", () 
   let session = applyObservation(newSession(), {
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
+    intent: "denial_question",
     scope: "in_scope",
   }, data).session;
 
@@ -89,6 +92,7 @@ test("requested human handoff is summarized without claiming a live transfer", (
   let session = applyObservation(newSession(), {
     identity: { name: "Margaret Chen", dob: "1985-03-15", idLast4: "4472" },
     caseHint: { caseId: "CL-2048" },
+    intent: "status_inquiry",
     scope: "in_scope",
   }, data).session;
 
