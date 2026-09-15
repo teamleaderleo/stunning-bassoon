@@ -52,7 +52,10 @@ export function applyObservation(session, observation = {}, data) {
     if (hadTarget) events.push({ type: "case_retargeted", fromCaseId: previousCaseId });
   }
 
-  const allowPrincipalClaimSemantics = !principalChanged || observation.caseTargetChange === true;
+  const allowPrincipalClaimSemantics = (
+    !principalChanged
+    && !next.principalReplacementPending
+  ) || observation.caseTargetChange === true;
   mergeObservation(next, observation, {
     mergeCaseHint: allowPrincipalClaimSemantics
       && (observation.caseTargetChange === true || !next.resolvedCaseId),
@@ -105,6 +108,7 @@ export function applyObservation(session, observation = {}, data) {
     if (verification.matchingFields.length >= 3 && verification.candidatePartyId) {
       next.verifiedPartyId = verification.candidatePartyId;
       next.verificationSubjectPartyId = verification.candidatePartyId;
+      next.principalReplacementPending = false;
       next.phase = PHASES.RESOLVE_INTENT;
       events.push({ type: "identity_verified", partyId: verification.candidatePartyId });
     }
@@ -271,6 +275,7 @@ function startFreshVerificationEpoch(session) {
   session.callerRole = null;
   session.verifiedPartyId = null;
   session.verificationSubjectPartyId = null;
+  session.principalReplacementPending = true;
   session.verification = { candidatePartyId: null, matchingFields: [] };
   session.caseHint = {};
   session.caseResolution = { status: "unresolved", candidateCaseIds: [] };
