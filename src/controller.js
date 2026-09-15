@@ -138,7 +138,14 @@ function mergeObservation(session, observation = {}) {
       if (hasValue(value)) session.caseHint[key] = value;
     }
   }
-  if (hasValue(observation.callerRole)) session.callerRole = observation.callerRole;
+  if (hasValue(observation.callerRole) && observation.callerRole !== "unknown") {
+    if (session.callerRole && session.callerRole !== observation.callerRole) {
+      session.callerRole = "representative";
+      session.humanTransferOffered = true;
+    } else {
+      session.callerRole = observation.callerRole;
+    }
+  }
   if (hasValue(observation.intent)) session.intent = observation.intent;
   if (hasValue(observation.emotion)) session.emotion = observation.emotion;
   if (typeof observation.refusal === "boolean") session.refusal = observation.refusal;
