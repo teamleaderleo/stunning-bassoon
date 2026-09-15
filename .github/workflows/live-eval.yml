@@ -1,0 +1,160 @@
+name: live-eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Model id on OpenCode Go
+        required: true
+        default: muse-spark-1.3-contributor
+        type: string
+      reasoning_effort:
+        description: Responses API reasoning effort
+        required: true
+        default: low
+        type: choice
+        options:
+          - provider-default
+          - none
+          - minimal
+          - low
+          - medium
+          - high
+          - xhigh
+      as_of_date:
+        description: Deterministic business date for temporal policy
+        required: true
+        default: "2026-09-15"
+        type: string
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: stunning-bassoon-paid-live-eval
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.actor == 'teamleaderleo') ||
+      (github.event_name == 'issue_comment' && github.event.issue.number == 30 && github.event.comment.user.login == 'teamleaderleo' && github.event.comment.body == '/run-live-eval')
+    runs-on: ubuntu-latest
+    outputs:
+      scenarios: ${{ steps.matrix.outputs.scenarios }}
+      model: ${{ steps.config.outputs.model }}
+      reasoning_effort: ${{ steps.config.outputs.reasoning_effort }}
+      as_of_date: ${{ steps.config.outputs.as_of_date }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require model key
+        env:
+          MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
+        run: |
+          if [ -z "$MODEL_API_KEY" ]; then
+            echo "::error::Repository Actions secret MODEL_API_KEY is not configured."
+            exit 1
+          fi
+      - id: config
+        name: Resolve run configuration
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_MODEL: ${{ inputs.model }}
+          INPUT_REASONING: ${{ inputs.reasoning_effort }}
+          INPUT_DATE: ${{ inputs.as_of_date }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "model=$INPUT_MODEL" >> "$GITHUB_OUTPUT"
+            echo "reasoning_effort=$INPUT_REASONING" >> "$GITHUB_OUTPUT"
+            echo "as_of_date=$INPUT_DATE" >> "$GITHUB_OUTPUT"
+          else
+            echo "model=muse-spark-1.3-contributor" >> "$GITHUB_OUTPUT"
+            echo "reasoning_effort=low" >> "$GITHUB_OUTPUT"
+            echo "as_of_date=2026-09-15" >> "$GITHUB_OUTPUT"
+          fi
+      - id: matrix
+        name: Build scenario matrix
+        run: echo "scenarios=$(node eval/list-live-scenarios.js)" >> "$GITHUB_OUTPUT"
+
+  live-scenario:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 13
+      matrix:
+        scenario: ${{ fromJson(needs.plan.outputs.scenarios) }}
+    env:
+      MODEL_API_KEY: ${{ secrets.MODEL_API_KEY }}
+      MODEL_BASE_URL: https://opencode.ai/zen/go/v1
+      MODEL_ID: ${{ needs.plan.outputs.model }}
+      MODEL_REASONING_EFFORT: ${{ needs.plan.outputs.reasoning_effort }}
+      LIVE_EVAL_AS_OF_DATE: ${{ needs.plan.outputs.as_of_date }}
+      LIVE_EVAL_SCENARIO: ${{ matrix.scenario }}
+      LIVE_EVAL_OUTPUT: artifacts/${{ matrix.scenario }}.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run ${{ matrix.scenario }}
+        run: node eval/live.js
+      - name: Upload scenario result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-eval-scenario-${{ matrix.scenario }}
+          path: artifacts/${{ matrix.scenario }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  aggregate:
+    needs: [plan, live-scenario]
+    if: ${{ always() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download scenario results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: live-eval-scenario-*
+          path: report/scenarios
+          merge-multiple: true
+      - id: aggregate
+        name: Build report
+        continue-on-error: true
+        run: node eval/aggregate-live.js report/scenarios report
+      - name: Add workflow summary
+        if: always()
+        run: cat report/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload combined report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-eval-report
+          path: report
+          if-no-files-found: error
+          retention-days: 14
+      - name: Post queue summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Live eval run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            cat report/summary.md
+          } > /tmp/live-eval-comment.md
+          gh issue comment 30 --repo "$GITHUB_REPOSITORY" --body-file /tmp/live-eval-comment.md
+      - name: Fail workflow when scenarios failed
+        if: steps.aggregate.outcome == 'failure'
+        run: exit 1

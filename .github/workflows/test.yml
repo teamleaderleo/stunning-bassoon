@@ -16,4 +16,6 @@ jobs:
       - run: npm test
       - run: npm run eval
       - run: node --check eval/live.js
+      - run: node --check eval/list-live-scenarios.js
+      - run: node --check eval/aggregate-live.js
       - run: docker build -t stunning-bassoon .
