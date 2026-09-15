@@ -20,7 +20,7 @@ export const scenarios = [
     id: "margaret-one-turn",
     description: "The supplied Margaret example verifies and immediately reuses the denied-healthcare-January hint.",
     turns: [{
-      text: "I'm the policyholder. My name is Margaret Chen, policy POL-9921. I'm calling about my denied healthcare claim from January. DOB is 1985-03-15, SSN last four is 4472. Why was it denied?",
+      text: "I'm the policyholder. My name is Margaret Chen, policy POL-9921. I'm calling about my denied healthcare claim from January. DOB is 1985-03-15, SSN last four is 4472.",
       observation: observation({
         identity: { name: "Margaret Chen", policyNumber: "POL-9921", dob: "1985-03-15", idLast4: "4472" },
         caseHint: { caseType: "healthcare", status: "denied", month: 1 },
