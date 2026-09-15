@@ -11,6 +11,7 @@ import { createModel } from "./model.js";
 const STATIC = new Map([
   ["/", ["../web/index.html", "text/html; charset=utf-8"]],
   ["/app.js", ["../web/app.js", "text/javascript; charset=utf-8"]],
+  ["/markdown.js", ["../web/markdown.js", "text/javascript; charset=utf-8"]],
   ["/style.css", ["../web/style.css", "text/css; charset=utf-8"]],
 ]);
 
